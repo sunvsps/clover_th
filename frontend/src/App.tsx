@@ -60,6 +60,7 @@ function App() {
   const [adminPagePickerGroup, setAdminPagePickerGroup] = useState(1)
   const [pendingLockedPages, setPendingLockedPages] = useState<Set<number>>(() => new Set())
   const [adminConfigOpen, setAdminConfigOpen] = useState(false)
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false)
   const [adminMembers, setAdminMembers] = useState<string[]>([])
   const [adminSearch, setAdminSearch] = useState('')
   const [language, setLanguage] = useState<'en' | 'th'>('en')
@@ -350,7 +351,7 @@ function App() {
           <span className="season-label">Ragnarok: The New World</span>
           <div className="profile">
             <button className="language-toggle" type="button" onClick={() => setLanguage((current) => current === 'en' ? 'th' : 'en')} title="Switch language">{isThai ? 'EN' : 'TH'}</button>
-              {isAuthenticated ? <><span className="avatar">{userName.charAt(0)}</span><span>{userName}</span>{isAdmin ? <><span className="top-admin-badge">ADMIN</span><button className="admin-menu-button" type="button" onClick={() => setAdminConfigOpen((open) => !open)}><Settings size={14} /> Admin menu</button></> : <span className="top-user-badge">USER</span>}<ChevronDown size={14} /><button className="logout-button" type="button" onClick={() => { setIsAuthenticated(false); setIsAdmin(false) }} title="Sign out"><LogOut size={14} /></button></> : <button className="top-login-button" type="button" onClick={signIn}><Hash size={15} /> Sign in with Discord</button>}
+              {isAuthenticated ? <><span className="avatar">{userName.charAt(0)}</span><span>{userName}</span>{isAdmin ? <div className="role-menu-wrap"><button className="top-admin-badge" type="button" onClick={() => setRoleMenuOpen((open) => !open)}>ADMIN <ChevronDown size={11} /></button>{roleMenuOpen && <div className="role-menu"><strong>Current role</strong><span>Administrator</span><button type="button" onClick={() => { setIsAdmin(false); setAdminConfigOpen(false); setRoleMenuOpen(false); setNotice('Switched to User view.') }}>Switch to USER view</button></div>}</div> : <span className="top-user-badge">USER</span>}<ChevronDown size={14} /><button className="logout-button" type="button" onClick={() => { setIsAuthenticated(false); setIsAdmin(false) }} title="Sign out"><LogOut size={14} /></button></> : <button className="top-login-button" type="button" onClick={signIn}><Hash size={15} /> Sign in with Discord</button>}
           </div>
         </div>
       </header>
