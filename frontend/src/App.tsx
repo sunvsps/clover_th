@@ -94,6 +94,7 @@ function App() {
   const [roundResolved, setRoundResolved] = useState(true);
   const [adminPagePickerOpen, setAdminPagePickerOpen] = useState(false);
   const [adminPagePickerGroup, setAdminPagePickerGroup] = useState(1);
+  const [pickerSelection, setPickerSelection] = useState<Set<number>>(() => new Set());
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [adminMembers, setAdminMembers] = useState<string[]>([]);
   const [adminSearch, setAdminSearch] = useState("");
@@ -474,20 +475,31 @@ function App() {
 
   function openAdminPagePicker() {
     setPendingPageCategories({ ...pageCategories });
+    setPickerSelection(new Set());
     setAdminPagePickerGroup(1);
     setAdminPagePickerOpen(true);
   }
 
-  // Click cycles a page through: normal -> gear -> card -> relic -> normal.
-  function cyclePendingPage(page: number) {
-    setPendingPageCategories((current) => {
-      const order: (QueueCategory | undefined)[] = [undefined, "gear", "card", "relic"];
-      const next = order[(order.indexOf(current[page]) + 1) % order.length];
-      const nextMap = { ...current };
-      if (next) nextMap[page] = next;
-      else delete nextMap[page];
-      return nextMap;
+  function togglePickerPage(page: number) {
+    setPickerSelection((current) => {
+      const next = new Set(current);
+      if (next.has(page)) next.delete(page);
+      else next.add(page);
+      return next;
     });
+  }
+
+  // Tick pages first, then assign them a category (or clear them) in one go.
+  function assignSelectedPages(category: QueueCategory | null) {
+    setPendingPageCategories((current) => {
+      const next = { ...current };
+      pickerSelection.forEach((page) => {
+        if (category) next[page] = category;
+        else delete next[page];
+      });
+      return next;
+    });
+    setPickerSelection(new Set());
   }
 
   function applyPageCategories() {
@@ -507,6 +519,11 @@ function App() {
       return;
     }
     const current = categoryClaims[category][myName];
+    const holder = Object.entries(categoryClaims[category]).find(([member, claimed]) => claimed === itemId && member !== myName)?.[0];
+    if (holder) {
+      setNotice(isThai ? `${itemLabel(itemId)} มี ${holder} ลงชื่อไว้แล้ว` : `${itemLabel(itemId)} is already claimed by ${holder}.`);
+      return;
+    }
     setCategoryClaims((claims) => {
       const next = { ...claims[category] };
       if (current === itemId) delete next[myName];
@@ -518,7 +535,7 @@ function App() {
         ? isThai ? `ยกเลิกการลงชื่อ ${itemLabel(itemId)}` : `Removed your claim on ${itemLabel(itemId)}.`
         : current
           ? isThai ? `ย้ายการลงชื่อ ${categoryLabel(category)} มาที่ ${itemLabel(itemId)}` : `Moved your ${categoryLabel(category)} claim to ${itemLabel(itemId)}.`
-          : isThai ? `ลงชื่อ ${itemLabel(itemId)} แล้ว (จัดอันดับตามคิว)` : `Claimed ${itemLabel(itemId)} — ranked by queue order.`,
+          : isThai ? `ลงชื่อ ${itemLabel(itemId)} แล้ว — ช่องนี้เป็นของคุณจนปิดรอบ` : `Claimed ${itemLabel(itemId)} — this slot is yours until the round ends.`,
     );
   }
 
@@ -1004,7 +1021,9 @@ function App() {
                 <div>
                   <p className="eyebrow">QUEUE PAGES</p>
                   <h2 id="admin-page-picker-title">{isThai ? "ติดป้ายหน้าเป็น Gear / Card / Relic" : "Tag pages as Gear / Card / Relic"}</h2>
-                  <small className="event-dialog-status">{isThai ? "กดซ้ำเพื่อวนเปลี่ยน: ปกติ → Gear → Card → Relic" : "Click to cycle: normal → Gear → Card → Relic"}</small>
+                  <small className="event-dialog-status">
+                    {isThai ? "1) ติ๊กเลือกหน้า  2) กดหมวดที่ต้องการด้านล่าง  3) กดบันทึก" : "1) Tick pages  2) press a category below  3) Save"}
+                  </small>
                 </div>
                 <button
                   type="button"
@@ -1042,28 +1061,48 @@ function App() {
                 ).map((page) => (
                   <button
                     type="button"
-                    className={pendingPageCategories[page] ? `active cat-${pendingPageCategories[page]}` : ""}
+                    className={`${pendingPageCategories[page] ? `tagged cat-${pendingPageCategories[page]}` : ""} ${pickerSelection.has(page) ? "ticked" : ""}`}
                     key={page}
-                    onClick={() => cyclePendingPage(page)}
+                    role="checkbox"
+                    aria-checked={pickerSelection.has(page)}
+                    onClick={() => togglePickerPage(page)}
                   >
-                    {pendingPageCategories[page] ? (
-                      <>
-                        <Tag size={12} /> {page} · {pendingPageCategories[page].toUpperCase()}
-                      </>
-                    ) : (
-                      `Page ${page}`
-                    )}
+                    <span className="tick">{pickerSelection.has(page) ? <Check size={11} /> : null}</span>
+                    {page}
+                    {pendingPageCategories[page] && <b className="page-tag">{pendingPageCategories[page].toUpperCase()}</b>}
                   </button>
                 ))}
               </div>
+              <div className="picker-assign">
+                <span>
+                  {pickerSelection.size > 0
+                    ? isThai ? `ตั้ง ${pickerSelection.size} หน้าที่เลือกเป็น:` : `Set ${pickerSelection.size} selected page(s) to:`
+                    : isThai ? "ติ๊กหน้าด้านบนก่อน แล้วเลือกหมวด" : "Tick pages above, then pick a category"}
+                </span>
+                <div className="picker-assign-buttons">
+                  {queueCategories.map((category) => (
+                    <button type="button" className={`job-swatch cat-${category.id}`} key={category.id} disabled={pickerSelection.size === 0} onClick={() => assignSelectedPages(category.id)}>
+                      <Tag size={11} /> {category.label}
+                    </button>
+                  ))}
+                  <button type="button" className="copy-button" disabled={pickerSelection.size === 0} onClick={() => assignSelectedPages(null)}>
+                    {isThai ? "ปกติ (ไม่ล็อก)" : "Normal"}
+                  </button>
+                </div>
+              </div>
               <div className="admin-modal-footer">
-                <span>{Object.keys(pendingPageCategories).length} {isThai ? "หน้าที่ติดป้าย" : "pages tagged"}</span>
+                <span>
+                  {pagesByCategory(pendingPageCategories)
+                    .filter(({ pages }) => pages.length)
+                    .map(({ category, pages }) => `${category.toUpperCase()} ${pages.join(", ")}`)
+                    .join(" · ") || (isThai ? "ยังไม่มีหน้าที่ล็อก" : "No pages tagged")}
+                </span>
                 <button
                   type="button"
                   className="admin-button"
                   onClick={applyPageCategories}
                 >
-                  {isThai ? "บันทึก" : "Apply"}
+                  <Check size={13} /> {isThai ? "บันทึก" : "Save"}
                 </button>
               </div>
             </section>
@@ -1119,30 +1158,25 @@ function App() {
                       item.status === "claimed" &&
                       item.claimedBy === myName;
                     if (category) {
-                      const ranked = rankedClaimants(item.id, category);
-                      const myRank = ranked.indexOf(myName);
+                      const holder = rankedClaimants(item.id, category)[0];
+                      const isHolder = holder === myName;
                       const myClaim = categoryClaims[category][myName];
                       const queued = inQueue(category, myName);
-                      const canClaim = isAuthenticated && queued && !isAuctionClosed && item.status !== "claimed";
+                      const canClaim = isAuthenticated && queued && !isAuctionClosed && item.status !== "claimed" && (!holder || isHolder);
                       return (
-                        <article className={`item-card queue-slot ${item.status} ${myRank >= 0 ? "mine-claim" : ""}`} key={item.id}>
+                        <article className={`item-card queue-slot ${item.status} ${holder ? "held" : ""} ${isHolder ? "mine-claim" : ""}`} key={item.id}>
                           <div className="item-info">
                             <h3>Item {itemIndex + 1}</h3>
                             {item.status === "claimed" ? (
                               <small className="reserved-by">
                                 {isThai ? "ได้ของ" : "Won by"} {item.claimedBy}
                               </small>
-                            ) : ranked.length > 0 ? (
-                              <ol className="claimants">
-                                {ranked.slice(0, 3).map((member, index) => (
-                                  <li key={member} className={member === myName ? "me" : ""}>
-                                    <b>{index + 1}</b> {member}
-                                  </li>
-                                ))}
-                                {ranked.length > 3 && <li className="more">+{ranked.length - 3}</li>}
-                              </ol>
+                            ) : holder ? (
+                              <small className={`reserved-by ${isHolder ? "me" : ""}`}>
+                                {isThai ? "ลงชื่อโดย" : "Claimed by"} {holder}
+                              </small>
                             ) : (
-                              <small>{isThai ? "ยังไม่มีคนลงชื่อ" : "No claims yet"}</small>
+                              <small>{isThai ? "ว่าง — ใครลงชื่อก่อนได้ก่อน" : "Open — first to claim"}</small>
                             )}
                           </div>
                           {item.status === "claimed" && isAdmin && roundResolved ? (
@@ -1151,7 +1185,7 @@ function App() {
                             </button>
                           ) : (
                             <button
-                              className={`claim-button ${myRank >= 0 ? "on-slot" : ""}`}
+                              className={`claim-button ${isHolder ? "on-slot" : ""}`}
                               type="button"
                               disabled={!canClaim}
                               title={!queued && isAuthenticated ? (isThai ? `ต้องลงคิว ${categoryLabel(category)} ก่อน` : `Join the ${categoryLabel(category)} queue first`) : undefined}
@@ -1165,10 +1199,12 @@ function App() {
                                 <>
                                   <ListOrdered size={14} /> {isThai ? "ต้องลงคิว" : "Queue first"}
                                 </>
-                              ) : myRank >= 0 ? (
+                              ) : isHolder ? (
                                 <>
-                                  <Trash2 size={14} /> {isThai ? `ยกเลิก (อันดับ ${myRank + 1})` : `Cancel (#${myRank + 1})`}
+                                  <Trash2 size={14} /> {copy.cancel}
                                 </>
+                              ) : holder ? (
+                                <>{isThai ? "มีคนลงชื่อแล้ว" : "Taken"}</>
                               ) : myClaim ? (
                                 <>
                                   <Package size={14} /> {isThai ? "ย้ายมาช่องนี้" : "Move here"}

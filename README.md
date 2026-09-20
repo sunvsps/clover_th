@@ -8,10 +8,10 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 - Uses the signed-in Discord display name as the reservation name (must match a roster name for queue eligibility)
 - Displays 4 items per selected page (200 items total across 50 pages)
 - Uses a popup page selector showing Pages 1-25, with a next set for Pages 26-50
-- Admin tags pages as Gear / Card / Relic ("Tag pages"); untagged pages stay normal first-come reservations
-- On tagged pages only members in that category's queue can claim, one slot per category per round (claims can be moved); several members may claim the same slot and are ranked by queue position
-- When the round ends (timer or "End round & resolve") the top-ranked claimant of each slot wins, is added to the reservation summary and leaves that queue; everyone else keeps their queue spot
-- After a round an admin can mark a winner who did not buy in game as "Passed → next", which hands the slot to the next-ranked claimant
+- Admin tags pages as Gear / Card / Relic ("Tag pages": tick pages, press a category, Save); untagged pages stay normal first-come reservations
+- On tagged pages only members in that category's queue can claim: one member per slot, one slot per category per round (a claim can be moved to another free slot), first come first served
+- When the round ends (timer or "End round & resolve") every slot holder wins, is added to the reservation summary and leaves that queue; members who claimed nothing keep their queue spot
+- After a round an admin can mark a winner who did not buy in game as "Passed", which logs it and frees the slot
 - Admins get an "Admin config" tab (also reachable from the ADMIN badge menu, `#admin`) to grant or remove admin access for guild members; non-admins are redirected away from it
 - Auction starts locked; after setting the duration, Admin must press Start round and wait for the 3-2-1 countdown before reservations open
 - Reserve available items and update the live claimed count; each member can hold at most 5 reservations per session (counter on the round card, Reserve buttons disable at the cap)

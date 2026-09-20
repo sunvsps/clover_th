@@ -398,7 +398,18 @@
 .page-block.page-queue { background: color-mix(in srgb, var(--cat) 8%, transparent); }
 .page-block.page-queue .page-label strong { color: var(--cat); }
 .page-label .cat-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: max-content; margin: 5px 0 0 auto; padding: 3px 7px; color: var(--cat-ink); background: var(--cat); border-radius: 4px; font: 800 9px 'DM Mono', monospace; letter-spacing: .08em; line-height: 1; }
-.admin-page-grid button.active[class*="cat-"] { color: var(--cat-ink); background: var(--cat); border-color: var(--cat); }
+.admin-page-grid button { position: relative; gap: 5px; }
+.admin-page-grid button .tick { display: grid; place-items: center; width: 14px; height: 14px; border: 1px solid #55625a; border-radius: 3px; background: #131713; color: #172012; }
+.admin-page-grid button.ticked { color: #f3f5f1; border-color: #b9e86d; background: #263523; }
+.admin-page-grid button.ticked .tick { background: #b9e86d; border-color: #b9e86d; }
+.admin-page-grid button.tagged { border-color: var(--cat); }
+.admin-page-grid button .page-tag { margin-left: auto; padding: 1px 4px; color: var(--cat-ink); background: var(--cat); border-radius: 3px; font: 800 8px 'DM Mono', monospace; }
+.picker-assign { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding: 12px; border: 1px dashed #526749; background: rgba(30, 43, 29, .5); border-radius: 8px; color: #c9d3c5; font-size: 12px; }
+.picker-assign-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.picker-assign-buttons .job-swatch { --job-bg: var(--cat); --job-fg: var(--cat-ink); opacity: 1; gap: 4px; }
+.picker-assign-buttons button:disabled { opacity: .35; cursor: default; }
+.item-card.queue-slot.held { border-color: color-mix(in srgb, var(--cat) 60%, #2b302c); }
+.reserved-by.me { color: #b9e86d; }
 .item-card.queue-slot { border-color: color-mix(in srgb, var(--cat) 35%, #2b302c); }
 .item-card.queue-slot.mine-claim { box-shadow: inset 0 0 0 1px var(--cat); }
 .claimants { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 0; padding: 0; list-style: none; }

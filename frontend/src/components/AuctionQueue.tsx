@@ -50,8 +50,8 @@ export default function AuctionQueue({ isThai, isAuthenticated, isAdmin, userNam
           <h2>{isThai ? "จองคิวประมูล" : "Auction queue"}</h2>
           <p>
             {isThai
-              ? "ลงคิวไว้ล่วงหน้าสำหรับหมวด Gear / Card / Relic (ลงได้ทั้ง 3 คิว) เมื่อเปิดรอบ ให้ไปที่หน้าประมูลแล้วลงชื่อในช่องของหมวดนั้นได้ 1 ช่อง ถ้ามีหลายคนลงช่องเดียวกัน คนที่คิวสูงกว่าได้ก่อน ปิดรอบแล้วผู้ได้ของจะหลุดคิวและต้องลงคิวใหม่ ส่วนคนที่ไม่ได้ของหรือไม่ได้ลงชื่อยังรักษาลำดับไว้"
-              : "Queue up ahead of time for Gear / Card / Relic (all three if you like). When a round opens, go to the auction page and claim one slot on that category's pages. If several people claim the same slot, the higher queue position wins. Winners leave the queue after the round and must re-register; everyone else keeps their spot."}
+              ? "ลงคิวไว้ล่วงหน้าสำหรับหมวด Gear / Card / Relic (ลงได้ทั้ง 3 คิว) เมื่อเปิดรอบ เฉพาะคนในคิวถึงจะไปลงชื่อในช่องของหมวดนั้นได้ ช่องละ 1 คน คนละ 1 ช่องต่อหมวด ใครลงชื่อก่อนได้ก่อน ปิดรอบแล้วคนที่ลงชื่อไว้ถือว่าได้ของ จะหลุดคิวและต้องลงคิวใหม่ ส่วนคนที่ไม่ได้ลงชื่อยังรักษาลำดับไว้"
+              : "Queue up ahead of time for Gear / Card / Relic (all three if you like). When a round opens, only queued members can claim a slot on that category's pages — one member per slot, one slot per category, first come first served. Whoever holds a slot when the round ends has won it, leaves the queue and must re-register; everyone else keeps their spot."}
           </p>
         </div>
         {isAuthenticated && (
@@ -82,11 +82,11 @@ export default function AuctionQueue({ isThai, isAuthenticated, isAdmin, userNam
         </span>
         <ArrowRight size={13} />
         <span>
-          <b>3</b> {isThai ? "ลงชื่อ 1 ช่องต่อหมวดในหน้าประมูล" : "Claim one slot per category on the auction page"}
+          <b>3</b> {isThai ? "ลงชื่อ 1 ช่องต่อหมวด (ช่องละ 1 คน)" : "Claim one slot per category (one member per slot)"}
         </span>
         <ArrowRight size={13} />
         <span>
-          <b>4</b> {isThai ? "ปิดรอบ: คิวสูงสุดของแต่ละช่องได้ของ" : "Round ends: top queue position per slot wins"}
+          <b>4</b> {isThai ? "ปิดรอบ: คนที่ถือช่องได้ของและหลุดคิว" : "Round ends: slot holders win and leave the queue"}
         </span>
       </div>
 
