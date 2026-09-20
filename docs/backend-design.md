@@ -480,7 +480,7 @@ Notes on `updatedAt`: Prisma's `@updatedAt` is client-side only, so every raw `U
 
 - CI runs `prisma validate` and `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url ... --exit-code` on every PR, so the schema file and migrations cannot drift.
 - All raw SQL (partial unique indexes on `Member`, `AuctionRound`, `Room`, all CHECK constraints) lives in one dedicated migration named `*_raw_constraints`. A second CI step greps the migration folder for each expected raw statement, so a later `migrate dev` cannot silently drop them.
-- IGN uniqueness (FR-1.10): the partial index is over active members. Bot upsert uses `INSERT ... ON CONFLICT ("discordId") DO UPDATE`. Prisma `P2002` is mapped by constraint: the IGN index to `DUPLICATE_IGN`, `discordId` is handled by the upsert. Reactivation (admin or bot) re-checks and returns `DUPLICATE_IGN` on collision.
+- IGN uniqueness (FR-1.10): the partial index is over active members. Bot upsert uses `INSERT ... ON CONFLICT ("discordId") DO UPDATE`. Prisma does not report the index name, so the IGN uniqueness violation is detected by matching the index name (`member_ign_active`) or the `normalize(ign` expression in the Prisma error (P2002 or P2010 for raw statements), and mapped to `DUPLICATE_IGN`; `discordId` is handled by the upsert. Reactivation (admin or bot) re-checks and returns `DUPLICATE_IGN` on collision.
 
 ---
 
@@ -559,7 +559,7 @@ Registration PUT response:
 }
 ```
 - `status` is the resulting state (JOINED may become WAITLISTED when a capacity is full).
-- `promoted` lists registration-waitlist promotions. `backfilled` lists planner backfills. Both are empty arrays when nothing happened. `planVersion` is present only when it changed.
+- `promoted` lists registration-waitlist promotions. `backfilled` lists planner backfills. Both are empty arrays when nothing happened. `planVersion` is always included (the current value, whether or not it changed).
 - Only an admin may change another member. A non-admin gets `REGISTRATION_CLOSED` once `startsAt <= clock_timestamp()` (checked inside the transaction after the lock). Repeating the same status is a no-op (200, same body, `promoted: []`, `backfilled: []`, nothing changes). The member status object has the same shape everywhere (`/registrations`, this response, the plan).
 - Wire enums are uppercase (`JOINED`); the frontend mapping to its `joined`/`leave` strings lives in `src/api/` only.
 
@@ -637,7 +637,8 @@ The leftover draft is an ordinary DRAFT round (`sourceRoundId` set). The admin r
 | BOT_KEY_INVALID | 401 | Missing or wrong bot key |
 | INVALID_JOB | 422 | Job missing or not in the job list (bot and admin) |
 | DUPLICATE_IGN | 409 | In-game name already used by an active member (also on reactivation) |
-| DUPLICATE_JOB_LABEL, JOB_IN_USE | 409 | Job management conflicts |
+| DUPLICATE_JOB_LABEL | 409 | Case-insensitive duplicate job label (NFC + lower; index `job_label_ci`) |
+| JOB_IN_USE | 409 | Job management conflict |
 | VALIDATION_ERROR | 422 | Body or parameter failed validation |
 | MEMBER_NOT_FOUND, NOT_FOUND | 404 | Unknown id |
 | MEMBER_INACTIVE | 422 | Action targets a deactivated member |
@@ -665,6 +666,13 @@ The leftover draft is an ordinary DRAFT round (`sourceRoundId` set). The admin r
 | INVALID_QUEUE_CATEGORY | 422 | Queue category is not Gear, Card or Relic |
 | NOTIFICATION_NOT_RETRYABLE | 409 | Retry on a SENT row |
 | RATE_LIMITED | 429 | Too many requests |
+| BAD_REQUEST | 400 | Malformed request (not a schema validation failure) |
+| CSRF_REJECTED | 403 | Cookie-authenticated non-GET request failed the Origin or `X-Requested-With` check |
+| CONFLICT | 409 | Generic state conflict with no more specific code |
+| REFERENCE_CONFLICT | 409 | Operation blocked by a referencing row (Prisma P2003, for example) |
+| CANNOT_DEACTIVATE_SELF | 409 | An admin tried to deactivate their own account (the bot may deactivate anyone) |
+| DB_UNAVAILABLE | 503 | Database unreachable |
+| INTERNAL_ERROR | 500 | Unexpected server error (no internal detail in the body) |
 
 ---
 
@@ -897,10 +905,10 @@ The bot rejects timestamps older than 5 minutes and dedupes on the key for at le
 ## 9. Cross-cutting
 
 - **Audit.** `audit.record(tx, ...)` runs in the same transaction as the write. Coverage: type-1 claims and releases, type-2 submissions, allocations and requeues, plan edits and backfills and undos, member edits and deactivations, bot registrations (create or change only, not idempotent no-ops), capacity, layout, backfill and channel settings, notification failures.
-- **Validation.** Zod on every route, IGN normalized to NFC and trimmed with a length cap, unknown body fields rejected.
+- **Validation.** Zod on every route, IGN normalized to NFC, trimmed, zero-width and other Unicode format (Cf) characters stripped, an invisible-only name rejected, and a length cap applied. All free-text input rejects control characters and lone surrogates (422 `VALIDATION_ERROR`). Unknown body fields rejected.
 - **Rate limits.** In-memory `@fastify/rate-limit` (fine for one instance). Keys: member id for authenticated routes, IP for auth routes. Claim and release 5 per second per member. Bot routes have their own limit.
-- **Error mapping.** Prisma `P2002` (by constraint name), `P2003`, `P2028` (503 `SERVICE_BUSY`) and `P2034` (retry once) map to stable error codes in the error handler.
-- **Times and dates on the wire.** Times are ISO 8601 with milliseconds and `Z`. Dates are `YYYY-MM-DD` in Bangkok.
+- **Error mapping.** Prisma `P2002`/`P2010` (matched on the index name or the `normalize(ign` / `normalize(label` expression in the error, since Prisma does not report the index name), `P2003`, `P2028` (503 `SERVICE_BUSY`) and `P2034` (retry once) map to stable error codes in the error handler.
+- **Times and dates on the wire.** Times are ISO 8601 with milliseconds and `Z`. Dates are `YYYY-MM-DD` in Bangkok. Notification text renders years as Gregorian (not Buddhist Era).
 - **Server clock.** Time-sensitive responses carry `serverTime`. Clients compute `offset = serverTime - (clientNow + rtt/2)` and count down against `closesAt`. The client never decides a window closed.
 - **Authorization.** `requireAuth` on every route except `P`, `requireAdmin` on every `Adm` route, and per-resource ownership checks for `M` routes. A test matrix covers every route.
 
@@ -981,6 +989,16 @@ The bot rejects timestamps older than 5 minutes and dedupes on the key for at le
 
 ---
 
+## 12a. User decisions recorded (later confirmations)
+
+- Admins cannot deactivate themselves (`CANNOT_DEACTIVATE_SELF`, 409); the bot can deactivate anyone.
+- Job labels are case-insensitive unique: index `job_label_ci` on `lower(normalize(label, NFC))` (raw SQL, in the raw-constraints migration); `DUPLICATE_JOB_LABEL` covers it.
+- `planVersion` is always included in the registration PUT response.
+- Notification text uses Gregorian years.
+- IGN handling strips zero-width and format (Cf) characters and rejects invisible-only names. Free-text input rejects control characters and lone surrogates (422).
+
+---
+
 ## 13. Open items (each with its default)
 
 | ID | Item | Default |
@@ -1037,7 +1055,7 @@ Each package is independently buildable once its dependencies are done. Acceptan
 
 ### WP3. Authentication, sessions and bot key
 
-- **Scope:** Discord OAuth (login, callback with per-IP rate limit and state check, logout) with state and PKCE where supported, DB sessions read by PK on every request (no cache; `lastSeen` and `expiresAt` refreshed at most hourly), session plugin, `requireAuth` and `requireAdmin` guards, CSRF (header and Origin checks for cookie routes only), `GET /me`. Bot key plugin (env `BOT_API_KEYS` digests, `timingSafeEqual`, redacted logs) and `PUT /bot/members/:discordId` (`ON CONFLICT` upsert) plus `POST /bot/members/:discordId/deactivate` (deactivation calls a service stub completed in WP4). Scripts `grant-admin` and `hash-bot-key`. A mock Discord server for tests. **The authorization-matrix harness** (`test/authz/matrix.ts`): every route in every WP registers itself with its required role and auth type, and the harness asserts `AUTH_REQUIRED` / `ADMIN_REQUIRED`, cookie-rejected-on-bot-routes and bot-key-rejected-on-member-routes. **OpenAPI type generation** (`openapi-typescript` output consumed by the frontend) starts here and is regenerated in each later backend WP, with a check that the generated spec matches the routes.
+- **Scope:** Discord OAuth (login, callback with per-IP rate limit and state check, logout) with state and PKCE where supported, DB sessions read by PK on every request (no cache; `lastSeen` and `expiresAt` refreshed at most hourly), session plugin, `requireAuth` and `requireAdmin` guards, CSRF (header and Origin checks for cookie routes only), `GET /me`. Bot key plugin (env `BOT_API_KEYS` digests, `timingSafeEqual`, redacted logs) and `PUT /bot/members/:discordId` (`ON CONFLICT` upsert) plus `POST /bot/members/:discordId/deactivate` (deactivation calls a service stub completed in WP4). Scripts `grant-admin` and `hash-bot-key`. A mock Discord server for tests. **The authorization-matrix harness** (`test/authz/matrix.ts`; the route registry lives in `backend/test/authz/routes.ts`): every route in every WP registers itself with its required role and auth type, and the harness asserts `AUTH_REQUIRED` / `ADMIN_REQUIRED`, cookie-rejected-on-bot-routes and bot-key-rejected-on-member-routes. **OpenAPI type generation** (`openapi-typescript` output consumed by the frontend) starts here and is regenerated in each later backend WP, with a check that the generated spec matches the routes.
 - **Files and modules:** `src/modules/auth/*`, `src/modules/bot/*`, `src/plugins/{session,requireAdmin,botAuth,csrf}.ts`, `scripts/grant-admin.ts`, `scripts/hash-bot-key.ts`, `test/helpers/mockDiscord.ts`, `test/authz/matrix.ts`.
 - **Depends on:** WP1, WP2.
 - **Acceptance tests (AC-1, AC-2):** registered member login returns a cookie and `/me` returns `memberId, discordId, ign, nickname, job, isAdmin, isIncomplete`. Unregistered Discord user gets `AUTH_NOT_REGISTERED` and no session row. Inactive member gets `AUTH_MEMBER_INACTIVE`. Bot PUT with a valid key creates (201) and repeats (200, no duplicate). Missing or wrong key gives 401 and changes nothing, and the key never appears in logs. Missing or invalid job, or missing ign, gives `INVALID_JOB` or `VALIDATION_ERROR` 422 and no member row. Duplicate IGN gives `DUPLICATE_IGN`. A member with no nickname reports `isIncomplete = true` in `/me`. A body containing `isAdmin` is rejected. Non-admin calling an admin route gets `ADMIN_REQUIRED`. State-changing cookie request without the CSRF header is rejected, while a bot-key request needs no such header. A session cookie is not accepted on bot routes and the bot key is not accepted on member routes. Both of two configured bot key digests work, and a removed one does not. A deactivated member's next request fails immediately (no cache). No session write happens on every request. A repeated identical bot PUT writes no audit row. A reused OAuth state is rejected. The auth error redirect uses the `?authError=` query string.
