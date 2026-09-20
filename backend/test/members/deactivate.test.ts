@@ -153,8 +153,8 @@ describe('WP4 bulk import script logic', () => {
       { discordId: 'x', ign: 'Bad' },
     ];
     const dry = await importMembers(w.db.prisma, rows, { dryRun: true });
-    // rows are rolled back one by one, so the IGN clash between rows 1 and 4 only shows in a real run
-    expect(dry.map((r) => r.outcome)).toEqual(['created', 'created', 'failed', 'created', 'failed']);
+    // the dry run sees rows like a real run, so the in-file duplicate IGN is reported
+    expect(dry.map((r) => r.outcome)).toEqual(['created', 'created', 'failed', 'failed', 'failed']);
     expect(await w.db.prisma.member.count()).toBe(0);
 
     const res = await importMembers(w.db.prisma, rows);

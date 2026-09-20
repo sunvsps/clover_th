@@ -91,6 +91,7 @@
           {
             "schema": {
               "type": "string",
+              "minLength": 0,
               "maxLength": 128
             },
             "in": "query",
@@ -204,7 +205,8 @@
                 "type": "object",
                 "properties": {
                   "ign": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 256
                   },
                   "job": {
                     "type": "string",
@@ -219,7 +221,8 @@
                   },
                   "nickname": {
                     "nullable": true,
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 256
                   }
                 },
                 "required": [
@@ -444,6 +447,7 @@
           {
             "schema": {
               "type": "string",
+              "minLength": 1,
               "maxLength": 64
             },
             "in": "query",
@@ -453,6 +457,7 @@
           {
             "schema": {
               "type": "string",
+              "minLength": 1,
               "maxLength": 100
             },
             "in": "query",
@@ -706,11 +711,13 @@
                 "type": "object",
                 "properties": {
                   "ign": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 256
                   },
                   "nickname": {
                     "nullable": true,
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 256
                   },
                   "jobId": {
                     "type": "integer",
@@ -998,7 +1005,8 @@
                           "maximum": 9007199254740991
                         },
                         "label": {
-                          "type": "string"
+                          "type": "string",
+                          "maxLength": 256
                         },
                         "color": {
                           "type": "string",
@@ -1091,6 +1099,7 @@
           {
             "schema": {
               "type": "string",
+              "minLength": 1,
               "maxLength": 100
             },
             "in": "query",

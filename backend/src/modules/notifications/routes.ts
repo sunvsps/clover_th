@@ -4,6 +4,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { record } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
+import { safeString } from '../../lib/text.js';
 import { requireAdmin } from '../../plugins/requireAdmin.js';
 
 const status = z.enum(['PENDING', 'SENDING', 'SENT', 'DEAD']);
@@ -37,7 +38,7 @@ export default async function notificationRoutes(app: FastifyInstance) {
         tags: ['notifications'],
         querystring: z.object({
           status: status.optional(),
-          eventType: z.string().max(100).optional(),
+          eventType: safeString(100).optional(),
           cursor: z.coerce.number().int().positive().optional(),
           limit: z.coerce.number().int().min(1).max(200).default(50),
         }),

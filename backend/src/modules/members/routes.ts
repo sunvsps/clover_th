@@ -4,15 +4,11 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { record } from '../../lib/audit.js';
 import { errors } from '../../lib/errors.js';
+import { nameField } from '../../lib/text.js';
 import { requireAdmin, requireAuth } from '../../plugins/requireAdmin.js';
 import { deactivateMember } from './deactivate.js';
 import { diff, resolveJob } from './upsert.js';
 
-const name = (max: number) =>
-  z
-    .string()
-    .transform((s) => s.normalize('NFC').trim())
-    .pipe(z.string().min(1).max(max));
 const flag = z
   .enum(['1', '0', 'true', 'false'])
   .optional()
@@ -100,8 +96,8 @@ export default async function memberRoutes(app: FastifyInstance) {
         params: idParam,
         body: z
           .object({
-            ign: name(64).optional(),
-            nickname: name(64).nullable().optional(),
+            ign: nameField(64).optional(),
+            nickname: nameField(64).nullable().optional(),
             jobId: z.number().int().positive().optional(),
           })
           .strict()

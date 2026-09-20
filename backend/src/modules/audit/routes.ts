@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import { safeString } from '../../lib/text.js';
 import { requireAdmin } from '../../plugins/requireAdmin.js';
 
 const item = z.object({
@@ -25,8 +26,8 @@ export default async function auditRoutes(app: FastifyInstance) {
         querystring: z.object({
           cursor: z.coerce.number().int().positive().optional(),
           limit: z.coerce.number().int().min(1).max(200).default(50),
-          actor: z.string().max(64).optional(),
-          action: z.string().max(100).optional(),
+          actor: safeString(64).optional(),
+          action: safeString(100).optional(),
           from: z.iso.datetime({ offset: true }).optional(),
           to: z.iso.datetime({ offset: true }).optional(),
         }),

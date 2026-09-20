@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { record } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import { withActivityLock } from '../../lib/locks.js';
+import { safeString } from '../../lib/text.js';
 import { requireAdmin, requireAuth } from '../../plugins/requireAdmin.js';
 import { promoteWaitlist } from '../registrations/service.js';
 
@@ -72,7 +73,7 @@ export default async function activityRoutes(app: FastifyInstance) {
     {
       schema: {
         tags: ['schedule'],
-        params: z.object({ id: z.string().min(1).max(100) }),
+        params: z.object({ id: safeString(100) }),
         body: patchBody,
         response: {
           200: z.object({

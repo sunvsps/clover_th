@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { errors } from '../../lib/errors.js';
+import { safeString } from '../../lib/text.js';
 import { endSession, startSession } from '../../plugins/session.js';
 import { requireAuth } from '../../plugins/requireAdmin.js';
 import { exchangeCode, fetchDiscordUserId } from './discord.js';
@@ -62,9 +63,9 @@ export default async function authRoutes(app: FastifyInstance) {
       schema: {
         tags: ['auth'],
         querystring: z.object({
-          code: z.string().min(1).max(512).optional(),
-          state: z.string().min(1).max(128).optional(),
-          error: z.string().max(128).optional(),
+          code: safeString(512).optional(),
+          state: safeString(128).optional(),
+          error: safeString(128, 0).optional(),
         }),
       },
       config: authLimit,

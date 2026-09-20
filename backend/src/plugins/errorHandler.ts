@@ -35,7 +35,18 @@ export default fp(
         if (isUniqueViolation(err, ...IGN_INDEX)) {
           return send(409, body('DUPLICATE_IGN', 'In-game name is already used by an active member'));
         }
+        if (err.code === 'P2002' && err.meta?.modelName === 'Job') {
+          return send(409, body('DUPLICATE_JOB_LABEL', 'Duplicate job label'));
+        }
         if (err.code === 'P2002') return send(409, body('CONFLICT', 'Unique constraint violated'));
+        // A raw statement hit a foreign key (e.g. the referenced job was deleted a moment earlier).
+        if (err.code === 'P2010' && JSON.stringify(err.meta ?? {}).includes('23503')) {
+          return send(409, body('REFERENCE_CONFLICT', 'Row is referenced or reference is invalid'));
+        }
+        // Backstop: text Postgres cannot store (NUL 22021, invalid UTF-8 22P05) is bad input, never a 500.
+        if (err.code === 'P2010' && /22021|22P05/.test(JSON.stringify(err.meta ?? {}))) {
+          return send(422, body('VALIDATION_ERROR', 'Request contains characters that cannot be stored'));
+        }
         if (err.code === 'P2003')
           return send(409, body('REFERENCE_CONFLICT', 'Row is referenced or reference is invalid'));
         if (err.code === 'P2028' || err.code === 'P2034') {

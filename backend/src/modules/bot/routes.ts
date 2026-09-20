@@ -1,25 +1,22 @@
+import { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { IGN_INDEX, errors } from '../../lib/errors.js';
 import { isUniqueViolation } from '../../lib/pgErrors.js';
+import { nameField, safeString } from '../../lib/text.js';
 import { requireBotKey } from '../../plugins/botAuth.js';
 import { deactivateMember } from '../members/deactivate.js';
 import { resolveJob, upsertBotMember } from '../members/upsert.js';
 
 const snowflake = z.string().regex(/^\d{5,25}$/, 'must be a Discord id (digits)');
-const name = (max: number) =>
-  z
-    .string()
-    .transform((s) => s.normalize('NFC').trim())
-    .pipe(z.string().min(1).max(max));
 
 const putBody = z
   .object({
-    ign: name(64),
-    job: z.string().min(1).max(64).optional(),
+    ign: nameField(64),
+    job: safeString(64).optional(),
     jobId: z.number().int().positive().optional(),
-    nickname: name(64).nullable().optional(),
+    nickname: nameField(64).nullable().optional(),
   })
   .strict()
   .refine((b) => (b.job === undefined) !== (b.jobId === undefined), {
@@ -68,7 +65,16 @@ export default async function botRoutes(app: FastifyInstance) {
           );
         })
         .catch((err) => {
-          throw isUniqueViolation(err, ...IGN_INDEX) ? errors.duplicateIgn() : err;
+          if (isUniqueViolation(err, ...IGN_INDEX)) throw errors.duplicateIgn();
+          // The job was deleted between the lookup and the insert: report it as an invalid job, not a 500.
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === 'P2010' &&
+            JSON.stringify(err.meta ?? {}).includes('23503')
+          ) {
+            throw errors.invalidJob();
+          }
+          throw err;
         });
 
       return reply.status(created ? 201 : 200).send({

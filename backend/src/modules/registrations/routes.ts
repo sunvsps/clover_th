@@ -5,6 +5,7 @@ import { AppError } from '../../lib/errors.js';
 import { withActivityLock } from '../../lib/locks.js';
 import { findEvent, getOrCreateOccurrence } from '../../lib/occurrence.js';
 import { daysBetween, isValidDateStr, withinWindow } from '../../lib/time.js';
+import { safeString } from '../../lib/text.js';
 import { requireAuth } from '../../plugins/requireAdmin.js';
 import { setRegistration } from './service.js';
 
@@ -50,7 +51,7 @@ export default async function registrationRoutes(app: FastifyInstance) {
       schema: {
         tags: ['registrations'],
         params: z.object({
-          eventId: z.string().min(1).max(100),
+          eventId: safeString(100),
           date: dateStr,
           memberId: z.union([z.literal('me'), z.uuid()]),
         }),

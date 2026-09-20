@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { record } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
+import { nameField } from '../../lib/text.js';
 import type { Tx } from '../../lib/tx.js';
 import { requireAdmin, requireAuth } from '../../plugins/requireAdmin.js';
 
@@ -18,10 +19,7 @@ const jobsOut = z.array(jobOut);
 const entry = z
   .object({
     id: z.number().int().positive().optional(),
-    label: z
-      .string()
-      .transform((s) => s.normalize('NFC').trim())
-      .pipe(z.string().min(1).max(64)),
+    label: nameField(64),
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be #rrggbb'),
     sortOrder: z.number().int().optional(),
   })
