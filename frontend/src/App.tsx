@@ -55,7 +55,12 @@ type Reservation = {
   items: string[];
 };
 
-const items: Item[] = Array.from({ length: 200 }, (_, index) => {
+const MAX_PAGES = 100;
+const DEFAULT_PAGES = 50;
+const PAGES_PER_GROUP = 25;
+const ITEMS_PER_PAGE = 4;
+
+const items: Item[] = Array.from({ length: MAX_PAGES * ITEMS_PER_PAGE }, (_, index) => {
   const number = index + 1;
 
   return {
@@ -79,7 +84,8 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userName, setUserName] = useState("");
   const [ign, setIgn] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1); // page *group* (25 pages each)
+  const [totalPages, setTotalPages] = useState(DEFAULT_PAGES);
   const [hasAdminRole, setHasAdminRole] = useState(false); // granted by the backend role check
   const [isAdmin, setIsAdmin] = useState(false); // currently viewing as admin
   const [roundNumber, setRoundNumber] = useState(0);
@@ -117,18 +123,24 @@ function App() {
   const [queues, setQueues] = useState<Queues>(() => emptyQueues());
   const [queueLog, setQueueLog] = useState<QueueLogEntry[]>([]);
 
-  const visibleItems = useMemo(
-    () => itemList.slice((currentPage - 1) * 100, currentPage * 100),
-    [currentPage, itemList],
-  );
-  const pageBlocks = useMemo(
-    () =>
-      Array.from({ length: 25 }, (_, index) => ({
-        page: (currentPage - 1) * 25 + index + 1,
-        items: visibleItems.slice(index * 4, index * 4 + 4),
-      })),
-    [currentPage, visibleItems],
-  );
+  const groupCount = Math.max(1, Math.ceil(totalPages / PAGES_PER_GROUP));
+  const groupRange = (group: number) => ({ start: (group - 1) * PAGES_PER_GROUP + 1, end: Math.min(group * PAGES_PER_GROUP, totalPages) });
+  const groupLabel = (group: number) => `${groupRange(group).start} - ${groupRange(group).end}`;
+  const pageBlocks = useMemo(() => {
+    const { start, end } = groupRange(currentPage);
+    return Array.from({ length: end - start + 1 }, (_, index) => {
+      const page = start + index;
+      return { page, items: itemList.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE) };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, itemList, totalPages]);
+
+  function updateTotalPages(value: number) {
+    const next = Math.min(MAX_PAGES, Math.max(1, Math.round(value) || 1));
+    setTotalPages(next);
+    setCurrentPage((group) => Math.min(group, Math.max(1, Math.ceil(next / PAGES_PER_GROUP))));
+    setPageCategories((current) => Object.fromEntries(Object.entries(current).filter(([page]) => Number(page) <= next)));
+  }
   const myClaimedCount = itemList.filter((item) => item.status === "claimed" && item.claimedBy === ign.trim()).length;
   const reachedLimit = myClaimedCount >= MAX_RESERVATIONS;
   const myName = ign.trim();
@@ -967,6 +979,17 @@ function App() {
               </small>
             </div>
             <label>
+              <span>{isThai ? "จำนวนหน้า" : "DISPLAY PAGES"}</span>
+              <input
+                type="number"
+                min="1"
+                max={MAX_PAGES}
+                value={totalPages}
+                onChange={(event) => updateTotalPages(Number(event.target.value))}
+                title={isThai ? `แสดงหน้าประมูล 1-${MAX_PAGES} หน้า (หน้าละ ${ITEMS_PER_PAGE} ชิ้น)` : `Show 1-${MAX_PAGES} auction pages (${ITEMS_PER_PAGE} items each)`}
+              />
+            </label>
+            <label>
               <span>ROUND MINUTES</span>
               <input
                 type="number"
@@ -1037,27 +1060,23 @@ function App() {
                 <button
                   type="button"
                   disabled={adminPagePickerGroup === 1}
-                  onClick={() => setAdminPagePickerGroup(1)}
+                  onClick={() => setAdminPagePickerGroup((group) => group - 1)}
                 >
                   <ArrowLeft size={14} />
                 </button>
-                <strong>
-                  {adminPagePickerGroup === 1
-                    ? "Pages 1 - 25"
-                    : "Pages 26 - 50"}
-                </strong>
+                <strong>Pages {groupLabel(adminPagePickerGroup)}</strong>
                 <button
                   type="button"
-                  disabled={adminPagePickerGroup === 2}
-                  onClick={() => setAdminPagePickerGroup(2)}
+                  disabled={adminPagePickerGroup >= groupCount}
+                  onClick={() => setAdminPagePickerGroup((group) => group + 1)}
                 >
                   <ArrowRight size={14} />
                 </button>
               </div>
               <div className="page-modal-grid admin-page-grid">
                 {Array.from(
-                  { length: 25 },
-                  (_, index) => (adminPagePickerGroup - 1) * 25 + index + 1,
+                  { length: groupRange(adminPagePickerGroup).end - groupRange(adminPagePickerGroup).start + 1 },
+                  (_, index) => groupRange(adminPagePickerGroup).start + index,
                 ).map((page) => (
                   <button
                     type="button"
@@ -1116,23 +1135,18 @@ function App() {
           </div>
           <div className="top-page-nav">
             <span>
-              Pages <strong>{currentPage === 1 ? "1 - 25" : "26 - 50"}</strong>
+              Pages <strong>{groupLabel(currentPage)}</strong> <em className="page-total">/ {totalPages}</em>
             </span>
-            <button
-              className="page-group-button"
-              type="button"
-              onClick={() => setCurrentPage((page) => (page === 1 ? 2 : 1))}
-            >
-              {currentPage === 1 ? (
-                <>
-                  {copy.next} <ArrowRight size={14} />
-                </>
-              ) : (
-                <>
+            {groupCount > 1 && (
+              <>
+                <button className="page-group-button" type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((group) => group - 1)}>
                   <ArrowLeft size={14} /> {copy.previous}
-                </>
-              )}
-            </button>
+                </button>
+                <button className="page-group-button" type="button" disabled={currentPage === groupCount} onClick={() => setCurrentPage((group) => group + 1)}>
+                  {copy.next} <ArrowRight size={14} />
+                </button>
+              </>
+            )}
           </div>
         </section>
         <section className="page-blocks" aria-label="Auction item pages">
@@ -1264,23 +1278,18 @@ function App() {
 
         <div className="page-group-bottom">
           <span>
-            Pages <strong>{currentPage === 1 ? "1 - 25" : "26 - 50"}</strong>
+            Pages <strong>{groupLabel(currentPage)}</strong> <em className="page-total">/ {totalPages}</em>
           </span>
-          <button
-            className="page-group-button"
-            type="button"
-            onClick={() => setCurrentPage((page) => (page === 1 ? 2 : 1))}
-          >
-            {currentPage === 1 ? (
-              <>
-                Next <ArrowRight size={14} />
-              </>
-            ) : (
-              <>
-                <ArrowLeft size={14} /> Previous
-              </>
-            )}
-          </button>
+          {groupCount > 1 && (
+            <span className="page-group-buttons">
+              <button className="page-group-button" type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((group) => group - 1)}>
+                <ArrowLeft size={14} /> {copy.previous}
+              </button>
+              <button className="page-group-button" type="button" disabled={currentPage === groupCount} onClick={() => setCurrentPage((group) => group + 1)}>
+                {copy.next} <ArrowRight size={14} />
+              </button>
+            </span>
+          )}
         </div>
 
         <section className="summary-section">

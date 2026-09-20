@@ -6,8 +6,7 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 
 - Discord login gate (mocked locally until the backend OAuth callback is connected)
 - Uses the signed-in Discord display name as the reservation name (must match a roster name for queue eligibility)
-- Displays 4 items per selected page (200 items total across 50 pages)
-- Uses a popup page selector showing Pages 1-25, with a next set for Pages 26-50
+- Displays 4 items per page; the admin sets how many pages to show (1-100, default 50) from the admin controls, and pages are browsed 25 at a time
 - Admin tags pages as Gear / Card / Relic ("Tag pages": tick pages, press a category, Save); untagged pages stay normal first-come reservations
 - On tagged pages only members in that category's queue can claim: one member per slot, one slot per category per round (a claim can be moved to another free slot), first come first served
 - When the round ends (timer or "End round & resolve") every slot holder wins, is added to the reservation summary and leaves that queue; members who claimed nothing keep their queue spot
