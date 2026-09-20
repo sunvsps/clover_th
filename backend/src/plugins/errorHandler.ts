@@ -43,6 +43,14 @@ export default fp(
         if (err.code === 'P2010' && JSON.stringify(err.meta ?? {}).includes('23503')) {
           return send(409, body('REFERENCE_CONFLICT', 'Row is referenced or reference is invalid'));
         }
+        // Backstop: two admins/paths racing for one planner slot (the Activity lock normally prevents this).
+        if (
+          (err.code === 'P2002' || err.code === 'P2010') &&
+          /teamId/.test(JSON.stringify(err.meta ?? {})) &&
+          /slot/.test(JSON.stringify(err.meta ?? {}))
+        ) {
+          return send(409, body('SLOT_TAKEN', 'That slot is already taken'));
+        }
         // Backstop: text Postgres cannot store (NUL 22021, invalid UTF-8 22P05) is bad input, never a 500.
         if (err.code === 'P2010' && /22021|22P05/.test(JSON.stringify(err.meta ?? {}))) {
           return send(422, body('VALIDATION_ERROR', 'Request contains characters that cannot be stored'));

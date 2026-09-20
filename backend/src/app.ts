@@ -22,6 +22,7 @@ import healthRoutes from './modules/health/routes.js';
 import jobRoutes from './modules/jobs/routes.js';
 import memberRoutes from './modules/members/routes.js';
 import notificationRoutes from './modules/notifications/routes.js';
+import plannerRoutes from './modules/planner/routes.js';
 import registrationRoutes from './modules/registrations/routes.js';
 import csrf from './plugins/csrf.js';
 import errorHandler from './plugins/errorHandler.js';
@@ -105,6 +106,7 @@ export async function buildApp(opts: BuildOptions) {
   await app.register(eventRoutes);
   await app.register(activityRoutes);
   await app.register(registrationRoutes);
+  await app.register(plannerRoutes);
 
   return app;
 }

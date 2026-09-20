@@ -1052,6 +1052,334 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/activities/{id}/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            activityId: string;
+                            rooms: {
+                                id: number;
+                                key: string;
+                                name: string;
+                                sortOrder: number;
+                                capacity: number;
+                                teams: {
+                                    id: number;
+                                    name: string;
+                                    size: number;
+                                    sortOrder: number;
+                                }[];
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        rooms: {
+                            id?: number;
+                            key: string;
+                            name: string;
+                            teams: {
+                                id?: number;
+                                name: string;
+                                size: number;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            activityId: string;
+                            rooms: {
+                                id: number;
+                                key: string;
+                                name: string;
+                                sortOrder: number;
+                                capacity: number;
+                                teams: {
+                                    id: number;
+                                    name: string;
+                                    size: number;
+                                    sortOrder: number;
+                                }[];
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{eventId}/occurrences/{date}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    eventId: string;
+                    date: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            eventId: string;
+                            date: string;
+                            startsAt: string | null;
+                            version: number;
+                            autoBackfill: boolean;
+                            rooms: {
+                                id: number;
+                                key: string;
+                                name: string;
+                                archived: boolean;
+                                capacity: number;
+                                teams: {
+                                    id: number;
+                                    name: string;
+                                    size: number;
+                                    archived: boolean;
+                                    placements: {
+                                        memberId: string;
+                                        slot: number;
+                                        /** @enum {string} */
+                                        regStatus: "JOINED" | "WAITLISTED" | "LEAVE" | "NONE";
+                                        /** @enum {string} */
+                                        source: "ADMIN" | "COPY" | "AUTO_BACKFILL";
+                                        backfill?: {
+                                            vacatedMemberId: string | null;
+                                            reason: string | null;
+                                            at: string;
+                                        };
+                                    }[];
+                                }[];
+                            }[];
+                            reserves: {
+                                memberId: string;
+                                registeredAt: string;
+                                order: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{eventId}/occurrences/{date}/plan/placements/{memberId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    eventId: string;
+                    date: string;
+                    memberId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        teamId: number | null;
+                        slot?: number;
+                        expectedVersion: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{eventId}/occurrences/{date}/plan/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    eventId: string;
+                    date: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        expectedVersion: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                            removed: number;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{eventId}/occurrences/{date}/plan/copy-from-previous": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    eventId: string;
+                    date: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        expectedVersion: number;
+                        sourceDate?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            copied: number;
+                            skipped: {
+                                memberId: string;
+                                /** @enum {string} */
+                                reason: "MEMBER_INACTIVE" | "TEAM_REMOVED" | "SLOT_OUT_OF_RANGE";
+                            }[];
+                            version: number;
+                            sourceDate: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {

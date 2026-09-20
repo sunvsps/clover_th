@@ -98,4 +98,46 @@ export const routes: RouteSpec[] = [
     auth: 'member',
     payload: { status: 'NONE' },
   },
+  // WP7a
+  {
+    method: 'GET',
+    pattern: '/api/v1/admin/activities/:id/layout',
+    url: '/api/v1/admin/activities/polarity-zone/layout',
+    auth: 'admin',
+  },
+  // invalid body on purpose: the guards are under test, not the replace itself
+  {
+    method: 'PUT',
+    pattern: '/api/v1/admin/activities/:id/layout',
+    url: '/api/v1/admin/activities/polarity-zone/layout',
+    auth: 'admin',
+    payload: { rooms: 'invalid' },
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/events/:eventId/occurrences/:date/plan',
+    url: '/api/v1/events/no-such-event/occurrences/2000-01-01/plan',
+    auth: 'member',
+  },
+  {
+    method: 'PUT',
+    pattern: '/api/v1/events/:eventId/occurrences/:date/plan/placements/:memberId',
+    url: `/api/v1/events/no-such-event/occurrences/2000-01-01/plan/placements/${NIL}`,
+    auth: 'admin',
+    payload: { teamId: null, expectedVersion: 0 },
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/events/:eventId/occurrences/:date/plan/clear',
+    url: '/api/v1/events/no-such-event/occurrences/2000-01-01/plan/clear',
+    auth: 'admin',
+    payload: { expectedVersion: 0 },
+  },
+  {
+    method: 'POST',
+    pattern: '/api/v1/events/:eventId/occurrences/:date/plan/copy-from-previous',
+    url: '/api/v1/events/no-such-event/occurrences/2000-01-01/plan/copy-from-previous',
+    auth: 'admin',
+    payload: { expectedVersion: 0 },
+  },
 ];
