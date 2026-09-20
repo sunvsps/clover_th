@@ -148,7 +148,13 @@ export default async function memberRoutes(app: FastifyInstance) {
       return app.tx(async (tx) => {
         if (!(await tx.member.findUnique({ where: { id: req.params.id }, select: { id: true } })))
           throw errors.memberNotFound();
-        await deactivateMember(tx, req.params.id, { type: 'MEMBER', id: req.auth!.memberId }, req.id);
+        await deactivateMember(
+          tx,
+          req.params.id,
+          { type: 'MEMBER', id: req.auth!.memberId },
+          req.id,
+          app.env.NOTIFICATIONS_PROVIDER,
+        );
         return toAdmin(await tx.member.findUniqueOrThrow({ where: { id: req.params.id } }));
       });
     },

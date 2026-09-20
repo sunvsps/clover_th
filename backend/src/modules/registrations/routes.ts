@@ -17,7 +17,16 @@ const putResponse = z.object({
   waitlistPosition: z.number().nullable(),
   promoted: z.array(z.string()),
   /** Planner backfills; always empty until the planner packages land. */
-  backfilled: z.array(z.unknown()),
+  backfilled: z.array(
+    z.object({
+      teamId: z.number(),
+      teamName: z.string(),
+      slot: z.number(),
+      vacatedMemberId: z.string(),
+      promotedMemberId: z.string(),
+      reason: z.enum(['UNREGISTERED', 'LEAVE', 'DEACTIVATED']),
+    }),
+  ),
   planVersion: z.number(),
 });
 
@@ -78,6 +87,7 @@ export default async function registrationRoutes(app: FastifyInstance) {
           requested: req.body.status,
           actor: { memberId: auth.memberId, isAdmin: auth.isAdmin },
           requestId: req.id,
+          notifications: app.env.NOTIFICATIONS_PROVIDER,
         });
       });
     },

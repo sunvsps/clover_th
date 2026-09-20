@@ -1,6 +1,8 @@
+import type { Env } from '../../config/env.js';
 import { record } from '../../lib/audit.js';
 import { lockActivities } from '../../lib/locks.js';
 import type { Tx } from '../../lib/tx.js';
+import { handleWithdrawal } from '../planner/backfill.js';
 import { promoteWaitlist } from '../registrations/service.js';
 
 type Actor = { type: 'BOT' | 'MEMBER'; id?: string | null };
@@ -12,7 +14,7 @@ type Actor = { type: 'BOT' | 'MEMBER'; id?: string | null };
  *  4. for each not-yet-started occurrence where the member has a registration or placement, delete both,
  *     bump planVersion when a placement went, and run waitlist promotion (capacity freed by a JOINED row);
  *  5. audit each step. History (past registrations, awards, audit rows) is kept.
- * Backfill (reason DEACTIVATED) for auto-backfill activities is wired in WP7b at the marked hook.
+ * Auto-backfill (reason DEACTIVATED) runs for auto-backfill activities (WP7b).
  * Idempotent: returns false, changing nothing, when the member is already inactive.
  */
 export async function deactivateMember(
@@ -20,6 +22,7 @@ export async function deactivateMember(
   memberId: string,
   actor: Actor,
   requestId?: string,
+  notifications: Env['NOTIFICATIONS_PROVIDER'] = 'off',
 ): Promise<boolean> {
   await lockActivities(tx);
   const rows = await tx.$queryRaw<{ id: string }[]>`
@@ -48,9 +51,15 @@ export async function deactivateMember(
     await audit('session.revoke', 'member', memberId, { sessions: s.count, reason: 'DEACTIVATED' });
 
   const affected = await tx.$queryRaw<
-    { occurrenceId: number; capacity: number | null; regStatus: string | null; placementId: number | null }[]
+    {
+      occurrenceId: number;
+      activityId: string;
+      capacity: number | null;
+      regStatus: string | null;
+      placementId: number | null;
+    }[]
   >`
-    SELECT o.id AS "occurrenceId", a."registrationCapacity" AS capacity, r.status AS "regStatus", p.id AS "placementId"
+    SELECT o.id AS "occurrenceId", a.id AS "activityId", a."registrationCapacity" AS capacity, r.status AS "regStatus", p.id AS "placementId"
     FROM "Occurrence" o
     JOIN "ScheduleEvent" e ON e.id = o."eventId"
     JOIN "Activity" a ON a.id = e."activityId"
@@ -60,15 +69,8 @@ export async function deactivateMember(
     ORDER BY o.id`;
 
   for (const o of affected) {
-    if (o.placementId !== null) {
-      await tx.$executeRaw`DELETE FROM "Placement" WHERE id = ${o.placementId}`;
-      await tx.$executeRaw`UPDATE "Occurrence" SET "planVersion" = "planVersion" + 1 WHERE id = ${o.occurrenceId}`;
-      await audit('placement.remove', 'occurrence', String(o.occurrenceId), {
-        memberId,
-        reason: 'DEACTIVATED',
-      });
-      // WP7b hook: auto-backfill of the vacated slot (reason DEACTIVATED) runs here for autoBackfill activities.
-    }
+    // Order per occurrence: registration removed, waitlist promoted, THEN the placement is vacated and (for
+    // auto-backfill activities) backfilled, so a promoted waitlister is an eligible reserve.
     if (o.regStatus !== null) {
       await tx.$executeRaw`DELETE FROM "Registration" WHERE "occurrenceId" = ${o.occurrenceId} AND "memberId" = ${memberId}::uuid`;
       await audit('registration.remove', 'occurrence', String(o.occurrenceId), {
@@ -88,6 +90,23 @@ export async function deactivateMember(
           });
         }
       }
+    }
+    if (o.placementId !== null) {
+      // Deactivation always removes the placement; planVersion is bumped once inside.
+      const bf = await handleWithdrawal(tx, {
+        occurrenceId: o.occurrenceId,
+        activityId: o.activityId,
+        memberId,
+        reason: 'DEACTIVATED',
+        removeWhenOff: true,
+        notifications,
+        requestId,
+      });
+      await audit('placement.remove', 'occurrence', String(o.occurrenceId), {
+        memberId,
+        reason: 'DEACTIVATED',
+        backfilledMemberId: bf.backfilled[0]?.promotedMemberId ?? null,
+      });
     }
   }
   return true;

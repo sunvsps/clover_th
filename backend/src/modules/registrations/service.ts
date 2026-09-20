@@ -1,7 +1,9 @@
+import type { Env } from '../../config/env.js';
 import { record } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
 import type { OccurrenceRow } from '../../lib/occurrence.js';
 import type { Tx } from '../../lib/tx.js';
+import { handleWithdrawal, type BackfillResult } from '../planner/backfill.js';
 
 export type RegStatus = 'JOINED' | 'WAITLISTED' | 'LEAVE';
 export type Requested = 'JOINED' | 'LEAVE' | 'NONE';
@@ -11,8 +13,8 @@ export type SetResult = {
   status: RegStatus | 'NONE';
   waitlistPosition: number | null;
   promoted: string[];
-  /** Planner backfills: always empty until WP7b. */
-  backfilled: never[];
+  /** Planner auto-backfills triggered by this change (empty when none). */
+  backfilled: BackfillResult[];
   planVersion: number;
 };
 
@@ -63,6 +65,8 @@ export async function setRegistration(
     requested: Requested;
     actor: Actor;
     requestId?: string;
+    /** NOTIFICATIONS_PROVIDER: enqueue of reserve.promoted happens in this transaction unless 'off' */
+    notifications?: Env['NOTIFICATIONS_PROVIDER'];
   },
 ): Promise<SetResult> {
   const { occurrence: occ, memberId, requested, actor } = a;
@@ -87,6 +91,8 @@ export async function setRegistration(
   const from: RegStatus | 'NONE' = cur?.status ?? 'NONE';
   const updatedBy = actor.memberId;
   let promoted: string[] = [];
+  let backfilled: BackfillResult[] = [];
+  let planVersion = occ.planVersion;
   let regId = cur?.id ?? null;
 
   const view = async (status: SetResult['status']): Promise<SetResult> => ({
@@ -94,8 +100,8 @@ export async function setRegistration(
     waitlistPosition:
       status === 'WAITLISTED' && regId !== null ? await waitlistPosition(tx, occ.id, regId) : null,
     promoted,
-    backfilled: [],
-    planVersion: occ.planVersion,
+    backfilled,
+    planVersion,
   });
 
   if (requested === 'JOINED') {
@@ -146,6 +152,18 @@ export async function setRegistration(
         requestId: a.requestId,
       });
     }
+    // Order inside one transaction: status change, waitlist promotion, then backfill (design 7.3/7.4).
+    // The trigger is a real transition out of JOINED; the routine itself finds out whether a placement exists.
+    const bf = await handleWithdrawal(tx, {
+      occurrenceId: occ.id,
+      activityId: occ.activityId,
+      memberId,
+      reason: requested === 'NONE' ? 'UNREGISTERED' : 'LEAVE',
+      notifications: a.notifications ?? 'off',
+      requestId: a.requestId,
+    });
+    backfilled = bf.backfilled;
+    if (bf.version !== null) planVersion = bf.version;
   }
   await audit(tx, a, from, requested === 'NONE' ? 'NONE' : 'LEAVE');
   return view(requested === 'NONE' ? 'NONE' : 'LEAVE');

@@ -106,7 +106,9 @@ export default async function botRoutes(app: FastifyInstance) {
         select: { id: true },
       });
       if (!member) throw errors.memberNotFound();
-      await app.tx((tx) => deactivateMember(tx, member.id, { type: 'BOT' }, req.id));
+      await app.tx((tx) =>
+        deactivateMember(tx, member.id, { type: 'BOT' }, req.id, app.env.NOTIFICATIONS_PROVIDER),
+      );
       return { memberId: member.id, isActive: false as const };
     },
   );

@@ -140,4 +140,12 @@ export const routes: RouteSpec[] = [
     auth: 'admin',
     payload: { expectedVersion: 0 },
   },
+  // WP7b
+  {
+    method: 'POST',
+    pattern: '/api/v1/events/:eventId/occurrences/:date/plan/placements/:memberId/undo-backfill',
+    url: `/api/v1/events/no-such-event/occurrences/2000-01-01/plan/placements/${NIL}/undo-backfill`,
+    auth: 'admin',
+    payload: { expectedVersion: 0 },
+  },
 ];

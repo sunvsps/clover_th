@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { AppError } from '../../lib/errors.js';
 import { withActivityLock } from '../../lib/locks.js';
 import {
   assertOccurrenceDate,
@@ -10,6 +11,7 @@ import {
 } from '../../lib/occurrence.js';
 import { nameField, safeString } from '../../lib/text.js';
 import { requireAdmin, requireAuth } from '../../plugins/requireAdmin.js';
+import { undoBackfill } from './backfill.js';
 import { copyFromPrevious } from './copy.js';
 import { assertPlanner, readLayout, replaceLayout } from './layout.js';
 import { assertVersion, buildPlan, clearPlan, placeMember } from './plan.js';
@@ -250,5 +252,37 @@ export default async function plannerRoutes(app: FastifyInstance) {
           requestId: req.id,
         }),
       ),
+  );
+
+  // Undo of an auto-backfill (FR-5.17). Only for source = AUTO_BACKFILL. The occurrence must already exist.
+  r.post(
+    '/api/v1/events/:eventId/occurrences/:date/plan/placements/:memberId/undo-backfill',
+    {
+      schema: {
+        tags: ['planner'],
+        params: occParams.extend({ memberId: z.uuid() }),
+        body: z.object({ expectedVersion: version }).strict(),
+        response: { 200: z.object({ version: z.number(), cancelledNotifications: z.number() }) },
+      },
+      onRequest: [requireAdmin],
+    },
+    async (req) => {
+      const { eventId, date, memberId } = req.params;
+      const ev = await findEvent(app.prisma, eventId);
+      await assertPlanner(app.prisma, ev.activityId);
+      assertOccurrenceDate(ev, date);
+      return app.tx(async (tx) => {
+        await withActivityLock(tx, ev.activityId);
+        const occ = await readOccurrence(tx, eventId, date);
+        if (!occ) throw new AppError('NOT_FOUND', 404, 'The member has no placement in this occurrence');
+        await assertVersion(tx, occ, req.body.expectedVersion, date);
+        return undoBackfill(tx, {
+          occurrenceId: occ.id,
+          memberId,
+          actor: { memberId: req.auth!.memberId },
+          requestId: req.id,
+        });
+      });
+    },
   );
 }

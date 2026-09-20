@@ -45,7 +45,7 @@ describe('WP4 deactivation', () => {
     expect(again.cb.headers.location).toContain('authError=AUTH_MEMBER_INACTIVE');
   });
 
-  it('removes future registrations and placements (bumping planVersion) and promotes the waitlist', async () => {
+  it('removes future registrations and placements, promotes the waitlist, and (auto-backfill activity) backfills the slot with the promoted waitlister once', async () => {
     const m = await w.member('Placed');
     const wait = await w.member('Waiting');
     const other = await w.member('Other');
@@ -67,7 +67,18 @@ describe('WP4 deactivation', () => {
     });
 
     await w.app.inject({ method: 'POST', url: `/api/v1/bot/members/${m.discordId}/deactivate`, headers: K });
-    expect(await w.db.prisma.placement.count()).toBe(0);
+    // Polarity Zone has auto-backfill on: the promoted waitlister is an eligible reserve and takes the slot
+    const placed = await w.db.prisma.placement.findMany();
+    expect(placed).toHaveLength(1);
+    expect(placed[0]).toMatchObject({
+      memberId: wait.id,
+      teamId: team.id,
+      slot: 1,
+      source: 'AUTO_BACKFILL',
+      backfilledForMemberId: m.id,
+      backfillReason: 'DEACTIVATED',
+    });
+    // planVersion is bumped once for the whole deactivation of this occurrence
     expect((await w.db.prisma.occurrence.findUniqueOrThrow({ where: { id: occ.id } })).planVersion).toBe(1);
     const regs = await w.db.prisma.registration.findMany({
       where: { occurrenceId: occ.id },
@@ -84,6 +95,7 @@ describe('WP4 deactivation', () => {
         'placement.remove',
         'registration.remove',
         'registration.promote',
+        'plan.backfill',
       ]),
     );
   });

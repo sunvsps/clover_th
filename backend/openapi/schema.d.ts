@@ -986,7 +986,15 @@ export interface paths {
                             status: "JOINED" | "WAITLISTED" | "LEAVE" | "NONE";
                             waitlistPosition: number | null;
                             promoted: string[];
-                            backfilled: unknown[];
+                            backfilled: {
+                                teamId: number;
+                                teamName: string;
+                                slot: number;
+                                vacatedMemberId: string;
+                                promotedMemberId: string;
+                                /** @enum {string} */
+                                reason: "UNREGISTERED" | "LEAVE" | "DEACTIVATED";
+                            }[];
                             planVersion: number;
                         };
                     };
@@ -1369,6 +1377,54 @@ export interface paths {
                             }[];
                             version: number;
                             sourceDate: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{eventId}/occurrences/{date}/plan/placements/{memberId}/undo-backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    eventId: string;
+                    date: string;
+                    memberId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        expectedVersion: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: number;
+                            cancelledNotifications: number;
                         };
                     };
                 };
