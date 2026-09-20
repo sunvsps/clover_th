@@ -4,6 +4,7 @@ import {
   addDays,
   attendanceKey,
   formatDay,
+  guildDays,
   scheduleEvents,
   startOfWeek,
   timeSlots,
@@ -167,7 +168,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
           <span className="schedule-corner" />
           {days.map((date, index) => (
             <span
-              className={`schedule-day ${index >= 5 ? "weekend" : ""} ${dayKeys[index] === todayKey ? "today" : ""}`}
+              className={`schedule-day ${guildDays.includes(index) ? "guild-day" : ""} ${dayKeys[index] === todayKey ? "today" : ""}`}
               key={dayKeys[index]}
               role="columnheader"
             >
@@ -188,7 +189,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                     return (
                       <button
                         type="button"
-                        className={`schedule-event ${status ?? ""} ${isSelected ? "selected" : ""}`}
+                        className={`schedule-event ${guildDays.includes(day) ? "highlight" : ""} ${status ?? ""} ${isSelected ? "selected" : ""}`}
                         key={event.id}
                         onClick={() => setSelected({ dateKey, event })}
                         title={`${event.name} ${event.start}-${event.end}`}
@@ -223,6 +224,9 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
       </div>
 
       <div className="schedule-legend">
+        <span>
+          <i className="legend-swatch highlight" /> {isThai ? "วันกิลด์ (อังคาร · พฤหัส · อาทิตย์)" : "Guild days (Tue · Thu · Sun)"}
+        </span>
         <span>
           <Hammer size={12} /> {isThai ? "กิจกรรมกิลด์" : "Guild activity"}
         </span>
@@ -261,7 +265,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
             if (entries.length === 0) return null;
             const hasAny = entries.some((entry) => entry.joined.length || entry.leave.length);
             return (
-              <article className={`day-card ${dateKey === todayKey ? "today" : ""}`} key={dateKey}>
+              <article className={`day-card ${dateKey === todayKey ? "today" : ""} ${guildDays.includes(day) ? "guild-day" : ""}`} key={dateKey}>
                 <header>
                   <span className="day-card-dow">{shortNames[day]}</span>
                   <strong>{formatDay(days[day], isThai)}</strong>
@@ -271,7 +275,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                 {entries.map(({ event, joined, leave }) => (
                   <div className="day-event" key={event.id}>
                     <button type="button" className="day-event-title" onClick={() => setSelected({ dateKey, event })}>
-                      {event.guild ? <Hammer size={12} /> : <i className="legend-swatch" />}
+                      {event.guild ? <Hammer size={12} /> : <i className={`legend-swatch ${guildDays.includes(day) ? "highlight" : ""}`} />}
                       <span>{event.name}</span>
                       <small>
                         {event.start}-{event.end}

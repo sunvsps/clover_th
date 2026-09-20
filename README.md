@@ -5,7 +5,7 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 ## Features
 
 - Discord login gate (mocked locally until the backend OAuth callback is connected)
-- Uses the signed-in Discord display name as the reservation name
+- Uses the signed-in Discord display name as the reservation name (must match a roster name for queue eligibility)
 - Displays 4 items per selected page (200 items total across 50 pages)
 - Uses a popup page selector showing Pages 1-25, with a next set for Pages 26-50
 - Supports per-page holds; all pages start open and the admin chooses which pages to hold
@@ -18,7 +18,8 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 - Reservation summary grouped by guild member
 - Copy the summary list for Discord
 - Responsive layout for desktop, tablet (iPad portrait/landscape) and phone; the weekly grid scrolls sideways on narrow screens and auto-centres on today
-- Weekly activity schedule on real calendar dates (all activity cards share one neutral style; a hammer marks guild activities) (Mon-Sun x time slots, matching the in-game activity board) with previous/next week and Today navigation; today's column is highlighted
+- Auction queue: members queue up for Gear / Card / Relic (any or all); when an admin puts an item up (type, name, job or any job) the queue is walked from the front — non-matching jobs are skipped and keep their spot, the first matching member takes or passes, and either way leaves the queue; history log of every outcome
+- Weekly activity schedule on real calendar dates (Tuesday, Thursday and Sunday activities are highlighted as guild days) (all activity cards share one neutral style; a hammer marks guild activities) (Mon-Sun x time slots, matching the in-game activity board) with previous/next week and Today navigation; today's column is highlighted
 - Members tap an activity to register as playing or mark leave; admins can record playing/leave for any member and clear entries; each card shows the playing/leave count
 - "Registrations by date" summary under the grid lists who is playing and who is on leave per event per day, with a copy-for-Discord button
 - Guild team planner: Team A and Team B, 8 subteams each, 5 members per subteam; admins drag member cards (coloured by job) into subteams, or tap a card then tap a subteam on touch devices; everyone can view and copy the plan for Discord
@@ -59,9 +60,10 @@ This repo is the UI. The backend/database is built separately; everything below 
 | `members` | `{ name, job, custom? }[]` | roster, team planner, schedule admin picker |
 | `jobs` | `{ id, label, color }[]` | card colours, chart, job manager |
 | `teamAssignments` | `{ [memberName]: "A-3" }` | team planner |
+| `queues` / `offer` / `queueLog` | `{ gear|card|relic: { member, joinedAt }[] }`, current offer `{ category, itemName, job\|null }`, outcome log | auction queue |
 | `attendance` | `{ ["YYYY-MM-DD:eventId"]: { [memberName]: "joined" \| "leave" } }` | schedule, roster by date |
 | `scheduleEvents` | static weekly template in `data/guild.ts` | schedule grid |
-| auth | `isAuthenticated`, `userName`, `isAdmin` (mocked by the Sign in button) | every admin-only control |
+| auth | `isAuthenticated`, `userName`, `isAdmin` (mocked by the Sign in button as roster member "Gantzping") | every admin-only control |
 
 ## Backend integration points
 

@@ -316,3 +316,81 @@
   .feature-content { padding-inline: 15px; }
   .pool-chips { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
+
+/* ---------- Guild-day highlight on the schedule ---------- */
+.schedule-day.guild-day { background: linear-gradient(180deg, #7a5a1c, #5c4212); color: #fff3d6; }
+.schedule-day.guild-day.today { background: linear-gradient(180deg, #4d6a2d, #33461f); color: #f2ffdf; }
+.schedule-event.highlight { color: #3a2a05; background: #f6d98a; box-shadow: inset 0 0 0 1px #c9a24a; }
+.schedule-event.highlight .event-time { color: #7a5408; }
+.schedule-event.highlight .guild-mark { color: #8a4c05; }
+.legend-swatch.highlight { background: #f6d98a; }
+.day-card.guild-day { border-color: #7a5a1c; }
+.day-card.guild-day .day-card-dow { color: #e8c46a; }
+
+/* ---------- Auction queue ---------- */
+.queue-warning { margin: 0 0 16px; padding: 10px 14px; color: #ffd2cb; background: #4a2723; border: 1px solid #7a3d35; border-radius: 8px; font-size: 12px; }
+.offer-panel { margin-bottom: 18px; padding: 16px; border: 1px dashed #526749; background: rgba(30, 43, 29, .5); border-radius: 10px; }
+.offer-panel.live { border-style: solid; border-color: #b9e86d; background: linear-gradient(145deg, #1e2b1d, #171a18 70%); box-shadow: 0 0 0 3px rgba(185, 232, 109, .12); }
+.offer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.offer-head .eyebrow { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.offer-head h3 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
+.offer-head small { color: #8d9c88; font: 10px 'DM Mono', monospace; }
+.offer-form .eyebrow { display: flex; align-items: center; gap: 5px; margin-bottom: 10px; }
+.offer-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.offer-fields label { display: flex; flex-direction: column; gap: 5px; color: #8d9c88; font: 10px 'DM Mono', monospace; letter-spacing: .06em; text-transform: uppercase; }
+.offer-fields label.grow { flex: 1 1 220px; }
+.offer-fields input, .offer-fields select { padding: 9px 10px; color: #e8eee6; background: #202a1f; border: 1px solid #465b40; border-radius: 5px; outline: none; font: 13px 'Anuphan', 'Manrope', sans-serif; text-transform: none; letter-spacing: 0; }
+.offer-fields input:focus, .offer-fields select:focus { border-color: #b9e86d; }
+.offer-fields .admin-button { padding: 10px 14px; }
+.offer-walk { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.walk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid #2b302c; background: #171a18; border-radius: 7px; font-size: 12px; }
+.walk-row.skipped { opacity: .55; }
+.walk-row.candidate { border-color: #b9e86d; background: #1f2a1d; box-shadow: 0 0 0 2px rgba(185, 232, 109, .2); }
+.walk-pos { min-width: 22px; color: #7c8879; font: 700 12px 'DM Mono', monospace; }
+.walk-name { display: flex; flex-direction: column; min-width: 120px; font-weight: 700; }
+.walk-name small { color: #7c8879; font-size: 10px; font-weight: 500; }
+.walk-state { display: inline-flex; align-items: center; gap: 5px; flex: 1; color: #9aa697; font-size: 11px; }
+.walk-row.candidate .walk-state { color: #b9e86d; font-weight: 700; }
+.walk-actions { display: inline-flex; gap: 6px; }
+.walk-actions button { flex: 0 0 auto; padding: 7px 12px; font-size: 11px; }
+.queue-columns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.queue-card { padding: 14px; border: 1px solid #2b302c; background: #171a18; border-radius: 10px; }
+.queue-card.live { border-color: #b9e86d; }
+.queue-card header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid #2a2f2a; }
+.queue-card header strong { display: block; font-size: 14px; }
+.queue-card header small { color: #7c8879; font: 10px 'DM Mono', monospace; }
+.queue-card header em { color: #b9e86d; font-style: normal; }
+.queue-card header .admin-button, .queue-card header .copy-button { flex: 0 0 auto; }
+.my-position { margin: 10px 0 0; padding: 7px 10px; color: #c9e8aa; background: #263523; border-radius: 6px; font-size: 11px; }
+.my-position strong { color: #fff; }
+.queue-list { margin: 10px 0 0; padding: 0; list-style: none; counter-reset: queue; display: flex; flex-direction: column; gap: 4px; }
+.queue-list li { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px; background: #1c211d; font-size: 12px; }
+.queue-list li::before { counter-increment: queue; content: counter(queue); min-width: 18px; color: #7c8879; font: 700 11px 'DM Mono', monospace; }
+.queue-list li.mine { background: #263523; box-shadow: inset 0 0 0 1px #4f6b3a; }
+.queue-list li.empty { color: #6f7c6d; }
+.queue-list li.empty::before { content: none; }
+.queue-name { flex: 1; font-weight: 600; }
+.queue-list small { color: #7c8879; font-size: 10px; }
+.queue-list .chip-tool { width: 20px; height: 20px; color: #9aa697; background: #252b26; }
+.queue-list .chip-tool:hover { color: #fff; background: #c6483c; }
+.queue-history { margin-top: 24px; padding: 16px; border: 1px solid #2b302c; background: #171a18; border-radius: 10px; }
+.queue-history .pool-title strong { display: inline-flex; align-items: center; gap: 6px; }
+.history-list { margin: 10px 0 0; padding: 0; list-style: none; }
+.history-list li { display: grid; grid-template-columns: 110px 1fr auto auto; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #242a25; font-size: 12px; }
+.history-list li:last-child { border-bottom: 0; }
+.history-time { color: #7c8879; font: 10px 'DM Mono', monospace; }
+.history-item { display: flex; flex-direction: column; }
+.history-item small { color: #7c8879; font-size: 10px; }
+.history-member { font-weight: 600; }
+.history-result { padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+.history-result.taken { color: #172012; background: #b9e86d; }
+.history-result.declined { color: #fff; background: #cf4d3f; }
+.history-result.no-taker { color: #cfddca; background: #344232; }
+@media (max-width: 900px) { .queue-columns { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .offer-head { flex-direction: column; }
+  .walk-actions { flex-basis: 100%; }
+  .walk-actions button { flex: 1; }
+  .history-list li { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .history-time { grid-column: 1 / -1; }
+}

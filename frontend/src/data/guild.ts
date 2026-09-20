@@ -99,6 +99,21 @@ export const weekDayShort = {
   en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
 };
 
+/** Days (0 = Monday) whose activities are highlighted as guild days. */
+export const guildDays = [1, 3, 6];
+
+export type QueueCategory = "gear" | "card" | "relic";
+export const queueCategories: { id: QueueCategory; label: string; labelTh: string }[] = [
+  { id: "gear", label: "Gear", labelTh: "Gear (อุปกรณ์)" },
+  { id: "card", label: "Card", labelTh: "Card (การ์ด)" },
+  { id: "relic", label: "Relic", labelTh: "Relic (เรลิก)" },
+];
+export type QueueEntry = { member: string; joinedAt: number };
+export type Queues = Record<QueueCategory, QueueEntry[]>;
+export type AuctionOffer = { id: number; category: QueueCategory; itemName: string; job: number | null; openedAt: number };
+export type QueueLogEntry = { id: number; time: number; category: QueueCategory; itemName: string; job: number | null; member: string | null; result: "taken" | "declined" | "no-taker" };
+export const emptyQueues = (): Queues => ({ gear: [], card: [], relic: [] });
+
 export const timeSlots = ["08:00", "12:00", "13:00", "18:00", "19:00", "20:00", "21:00", "21:30", "22:00"];
 
 export const scheduleEvents: ScheduleEvent[] = [

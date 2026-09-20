@@ -10,6 +10,7 @@ import {
   Crown,
   Hash,
   LogOut,
+  ListOrdered,
   Package,
   Lock,
   LockOpen,
@@ -20,7 +21,20 @@ import {
 } from "lucide-react";
 import "./App.css";
 import "./features.css";
-import { defaultJobs, guildMembers, SUBTEAM_SIZE, type Attendance, type GuildMember, type Job } from "./data/guild";
+import {
+  defaultJobs,
+  emptyQueues,
+  guildMembers,
+  SUBTEAM_SIZE,
+  type Attendance,
+  type AuctionOffer,
+  type GuildMember,
+  type Job,
+  type QueueCategory,
+  type QueueLogEntry,
+  type Queues,
+} from "./data/guild";
+import AuctionQueue from "./components/AuctionQueue";
 import WeeklySchedule, { type AttendanceBook } from "./components/WeeklySchedule";
 import TeamPlanner, { type TeamAssignments } from "./components/TeamPlanner";
 
@@ -50,11 +64,11 @@ const items: Item[] = Array.from({ length: 200 }, (_, index) => {
 
 const MAX_RESERVATIONS = 5;
 
-type GuildView = "auction" | "calendar" | "teams" | "admin";
+type GuildView = "auction" | "queue" | "calendar" | "teams" | "admin";
 
 function viewFromHash(): GuildView {
   const hash = window.location.hash.replace("#", "");
-  return hash === "calendar" || hash === "teams" || hash === "admin" ? hash : "auction";
+  return hash === "queue" || hash === "calendar" || hash === "teams" || hash === "admin" ? hash : "auction";
 }
 
 function App() {
@@ -95,6 +109,9 @@ function App() {
   const [members, setMembers] = useState<GuildMember[]>(guildMembers);
   const [attendance, setAttendance] = useState<AttendanceBook>({});
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignments>({});
+  const [queues, setQueues] = useState<Queues>(() => emptyQueues());
+  const [offer, setOffer] = useState<AuctionOffer | null>(null);
+  const [queueLog, setQueueLog] = useState<QueueLogEntry[]>([]);
 
   const visibleItems = useMemo(
     () => itemList.slice((currentPage - 1) * 100, currentPage * 100),
@@ -204,8 +221,8 @@ function App() {
 
   function signIn() {
     setIsAuthenticated(true);
-    setUserName("Mew");
-    setIgn("Mew");
+    setUserName("Gantzping");
+    setIgn("Gantzping");
     setHasAdminRole(true);
     setIsAdmin(true);
   }
@@ -552,6 +569,8 @@ function App() {
       ),
     );
     setAdminMembers((current) => current.map((member) => (member === oldName ? newName : member)));
+    const renameEntries = (entries: Queues[QueueCategory]) => entries.map((entry) => (entry.member === oldName ? { ...entry, member: newName } : entry));
+    setQueues((current) => ({ gear: renameEntries(current.gear), card: renameEntries(current.card), relic: renameEntries(current.relic) }));
     setNotice(isThai ? `เปลี่ยนชื่อ ${oldName} เป็น ${newName} แล้ว` : `${oldName} renamed to ${newName}.`);
     return true;
   }
@@ -576,9 +595,52 @@ function App() {
     return true;
   }
 
+  function joinQueue(category: QueueCategory) {
+    if (!isAuthenticated || !members.some((member) => member.name === userName)) return;
+    setQueues((current) =>
+      current[category].some((entry) => entry.member === userName)
+        ? current
+        : { ...current, [category]: [...current[category], { member: userName, joinedAt: Date.now() }] },
+    );
+    setNotice(isThai ? `ลงคิว ${category.toUpperCase()} แล้ว` : `Joined the ${category} queue.`);
+  }
+
+  function leaveQueue(category: QueueCategory, member: string) {
+    if (member !== userName && !isAdmin) return;
+    setQueues((current) => ({ ...current, [category]: current[category].filter((entry) => entry.member !== member) }));
+    setNotice(isThai ? `${member} ออกจากคิว ${category.toUpperCase()} แล้ว` : `${member} left the ${category} queue.`);
+  }
+
+  function openOffer(category: QueueCategory, itemName: string, job: number | null) {
+    if (!isAdmin || offer) return;
+    setOffer({ id: Date.now(), category, itemName, job, openedAt: Date.now() });
+    setNotice(isThai ? `เปิดประมูล ${itemName}` : `${itemName} is up for auction.`);
+  }
+
+  function resolveOffer(member: string, result: "taken" | "declined") {
+    if (!offer || (member !== userName && !isAdmin)) return;
+    // Taking or passing both end the member's turn: they leave the queue and must register again.
+    setQueues((current) => ({ ...current, [offer.category]: current[offer.category].filter((entry) => entry.member !== member) }));
+    setQueueLog((current) => [{ id: Date.now(), time: Date.now(), category: offer.category, itemName: offer.itemName, job: offer.job, member, result }, ...current]);
+    if (result === "taken") setOffer(null);
+    setNotice(
+      result === "taken"
+        ? isThai ? `${member} รับ ${offer.itemName} แล้ว` : `${member} took ${offer.itemName}.`
+        : isThai ? `${member} สละสิทธิ์ ${offer.itemName} — ไปคิวถัดไป` : `${member} passed on ${offer.itemName} — moving to the next in line.`,
+    );
+  }
+
+  function closeOffer() {
+    if (!isAdmin || !offer) return;
+    setQueueLog((current) => [{ id: Date.now(), time: Date.now(), category: offer.category, itemName: offer.itemName, job: offer.job, member: null, result: "no-taker" }, ...current]);
+    setOffer(null);
+    setNotice(isThai ? "ปิดรายการประมูลแล้ว" : "Offer closed.");
+  }
+
   function removeMember(name: string) {
     if (!isAdmin) return;
     setMembers((current) => current.filter((member) => member.name !== name));
+    setQueues((current) => ({ gear: current.gear.filter((entry) => entry.member !== name), card: current.card.filter((entry) => entry.member !== name), relic: current.relic.filter((entry) => entry.member !== name) }));
     removeMemberFromTeam(name);
     setAdminMembers((current) => current.filter((member) => member !== name));
     setNotice(isThai ? `ลบ ${name} ออกจากรายชื่อแล้ว` : `${name} removed from the roster.`);
@@ -706,6 +768,9 @@ function App() {
       <nav className="feature-nav" aria-label="Guild tools">
         <button className={activeView === "auction" ? "active" : ""} type="button" onClick={() => setActiveView("auction")}>
           <Package size={15} /> {isThai ? "ประมูลไอเท็ม" : "Auction"}
+        </button>
+        <button className={activeView === "queue" ? "active" : ""} type="button" onClick={() => setActiveView("queue")}>
+          <ListOrdered size={15} /> {isThai ? "จองคิวประมูล" : "Auction queue"}
         </button>
         <button className={activeView === "calendar" ? "active" : ""} type="button" onClick={() => setActiveView("calendar")}>
           <CalendarDays size={15} /> {isThai ? "ตารางกิจกรรม" : "Schedule"}
@@ -1227,6 +1292,26 @@ function App() {
               </button>
             </div>
           </section>
+        </div>
+      )}
+      {activeView === "queue" && (
+        <div className="feature-content">
+          <AuctionQueue
+            isThai={isThai}
+            isAuthenticated={isAuthenticated}
+            isAdmin={isAdmin}
+            userName={userName}
+            jobs={jobs}
+            members={members}
+            queues={queues}
+            offer={offer}
+            log={queueLog}
+            onJoin={joinQueue}
+            onLeave={leaveQueue}
+            onOpenOffer={openOffer}
+            onResolve={resolveOffer}
+            onCloseOffer={closeOffer}
+          />
         </div>
       )}
       {activeView === "calendar" && (
