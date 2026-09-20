@@ -110,8 +110,11 @@ export const queueCategories: { id: QueueCategory; label: string; labelTh: strin
 ];
 export type QueueEntry = { member: string; joinedAt: number };
 export type Queues = Record<QueueCategory, QueueEntry[]>;
-export type AuctionOffer = { id: number; category: QueueCategory; itemName: string; job: number | null; openedAt: number };
-export type QueueLogEntry = { id: number; time: number; category: QueueCategory; itemName: string; job: number | null; member: string | null; result: "taken" | "declined" | "no-taker" };
+export type QueueLogEntry = { id: number; time: number; round: number; category: QueueCategory; itemName: string; member: string; result: "taken" | "declined" };
+/** One claim per member per category per round: member name -> item id. */
+export type CategoryClaims = Record<QueueCategory, Record<string, number>>;
+export const emptyClaims = (): CategoryClaims => ({ gear: {}, card: {}, relic: {} });
+export const itemLabel = (itemId: number) => `Page ${Math.ceil(itemId / 4)} / Item ${((itemId - 1) % 4) + 1}`;
 export const emptyQueues = (): Queues => ({ gear: [], card: [], relic: [] });
 
 export const timeSlots = ["08:00", "12:00", "13:00", "18:00", "19:00", "20:00", "21:00", "21:30", "22:00"];

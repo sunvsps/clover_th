@@ -12,6 +12,7 @@ import {
   LogOut,
   ListOrdered,
   Package,
+  Tag,
   Lock,
   LockOpen,
   Settings,
@@ -23,11 +24,14 @@ import "./App.css";
 import "./features.css";
 import {
   defaultJobs,
+  emptyClaims,
   emptyQueues,
   guildMembers,
+  itemLabel,
+  queueCategories,
   SUBTEAM_SIZE,
   type Attendance,
-  type AuctionOffer,
+  type CategoryClaims,
   type GuildMember,
   type Job,
   type QueueCategory,
@@ -83,13 +87,13 @@ function App() {
   const [isAuctionStarted, setIsAuctionStarted] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(15);
-  const [lockedPages, setLockedPages] = useState<Set<number>>(() => new Set());
-  const [heldPagesRound, setHeldPagesRound] = useState(false);
+  const [pageCategories, setPageCategories] = useState<Record<number, QueueCategory>>({});
+  const [pendingPageCategories, setPendingPageCategories] = useState<Record<number, QueueCategory>>({});
+  const [categoryClaims, setCategoryClaims] = useState<CategoryClaims>(() => emptyClaims());
+  const [slotRankings, setSlotRankings] = useState<Record<number, string[]>>({});
+  const [roundResolved, setRoundResolved] = useState(true);
   const [adminPagePickerOpen, setAdminPagePickerOpen] = useState(false);
   const [adminPagePickerGroup, setAdminPagePickerGroup] = useState(1);
-  const [pendingLockedPages, setPendingLockedPages] = useState<Set<number>>(
-    () => new Set(),
-  );
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [adminMembers, setAdminMembers] = useState<string[]>([]);
   const [adminSearch, setAdminSearch] = useState("");
@@ -110,7 +114,6 @@ function App() {
   const [attendance, setAttendance] = useState<AttendanceBook>({});
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignments>({});
   const [queues, setQueues] = useState<Queues>(() => emptyQueues());
-  const [offer, setOffer] = useState<AuctionOffer | null>(null);
   const [queueLog, setQueueLog] = useState<QueueLogEntry[]>([]);
 
   const visibleItems = useMemo(
@@ -127,6 +130,27 @@ function App() {
   );
   const myClaimedCount = itemList.filter((item) => item.status === "claimed" && item.claimedBy === ign.trim()).length;
   const reachedLimit = myClaimedCount >= MAX_RESERVATIONS;
+  const myName = ign.trim();
+  const pageOf = (itemId: number) => Math.ceil(itemId / 4);
+  const categoryOfItem = (itemId: number): QueueCategory | undefined => pageCategories[pageOf(itemId)];
+  const inQueue = (category: QueueCategory, member: string) => queues[category].some((entry) => entry.member === member);
+  const rankedClaimants = (itemId: number, category: QueueCategory) =>
+    Object.entries(categoryClaims[category])
+      .filter(([, claimed]) => claimed === itemId)
+      .map(([member]) => member)
+      .sort((a, b) => queues[category].findIndex((entry) => entry.member === a) - queues[category].findIndex((entry) => entry.member === b));
+  const categoryLabel = (category: QueueCategory) => {
+    const entry = queueCategories.find((item) => item.id === category);
+    return isThai ? entry?.labelTh ?? category : entry?.label ?? category;
+  };
+  const pagesByCategory = (source: Record<number, QueueCategory>) =>
+    queueCategories.map((category) => ({
+      category: category.id,
+      pages: Object.entries(source)
+        .filter(([, value]) => value === category.id)
+        .map(([page]) => Number(page))
+        .sort((a, b) => a - b),
+    }));
   const claimedCount = itemList.filter(
     (item) => item.status === "claimed",
   ).length;
@@ -185,6 +209,11 @@ function App() {
     window.addEventListener("hashchange", syncView);
     return () => window.removeEventListener("hashchange", syncView);
   }, []);
+
+  useEffect(() => {
+    if (isAuctionStarted && countdown === null && timeLeft <= 0 && !roundResolved) resolveCategoryRound();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuctionStarted, countdown, timeLeft, roundResolved]);
 
   useEffect(() => {
     if (!isAuctionStarted || countdown !== null || timeLeft <= 0) return;
@@ -274,11 +303,9 @@ function App() {
     const itemPage = Math.ceil(selectedItem.id / 4);
     const itemPosition = ((selectedItem.id - 1) % 4) + 1;
     const reservationLabel = `Page ${itemPage} / Item ${itemPosition}`;
-    const pageIsLocked = heldPagesRound
-      ? !lockedPages.has(itemPage)
-      : lockedPages.has(itemPage);
-    if (pageIsLocked) {
-      setNotice(`Page ${itemPage} is locked for this round.`);
+    const category = categoryOfItem(itemId);
+    if (category) {
+      toggleCategoryClaim(itemId, category);
       return;
     }
 
@@ -437,50 +464,127 @@ function App() {
   function startRound() {
     if (countdown !== null) return;
     setRoundNumber((round) => (round === 0 ? 1 : round + 1));
-    setHeldPagesRound(false);
+    setCategoryClaims(emptyClaims());
+    setSlotRankings({});
+    setRoundResolved(false);
     setIsAuctionStarted(false);
     setCountdown(3);
     setNotice("New auction session starting...");
   }
 
   function openAdminPagePicker() {
-    setPendingLockedPages(new Set(lockedPages));
+    setPendingPageCategories({ ...pageCategories });
     setAdminPagePickerGroup(1);
     setAdminPagePickerOpen(true);
   }
 
-  function togglePendingPage(page: number) {
-    setPendingLockedPages((pages) => {
-      const nextPages = new Set(pages);
-      if (nextPages.has(page)) nextPages.delete(page);
-      else nextPages.add(page);
-      return nextPages;
+  // Click cycles a page through: normal -> gear -> card -> relic -> normal.
+  function cyclePendingPage(page: number) {
+    setPendingPageCategories((current) => {
+      const order: (QueueCategory | undefined)[] = [undefined, "gear", "card", "relic"];
+      const next = order[(order.indexOf(current[page]) + 1) % order.length];
+      const nextMap = { ...current };
+      if (next) nextMap[page] = next;
+      else delete nextMap[page];
+      return nextMap;
     });
   }
 
-  function applyPageLocks() {
-    setLockedPages(new Set(pendingLockedPages));
+  function applyPageCategories() {
+    setPageCategories({ ...pendingPageCategories });
     setAdminPagePickerOpen(false);
+    const tagged = Object.keys(pendingPageCategories).length;
+    setNotice(tagged ? (isThai ? `ติดป้ายหมวดคิว ${tagged} หน้า` : `${tagged} pages tagged for queue categories.`) : isThai ? "ทุกหน้าเป็นการจองปกติ" : "All pages are normal reservations.");
+  }
+
+  function toggleCategoryClaim(itemId: number, category: QueueCategory) {
+    if (!inQueue(category, myName)) {
+      setNotice(isThai ? `ต้องลงคิว ${categoryLabel(category)} ก่อนถึงจะจองหน้านี้ได้` : `Join the ${categoryLabel(category)} queue before reserving on this page.`);
+      return;
+    }
+    if (isAuctionClosed) {
+      setNotice(!isAuctionStarted ? "The admin has not started this round yet." : "This round has ended.");
+      return;
+    }
+    const current = categoryClaims[category][myName];
+    setCategoryClaims((claims) => {
+      const next = { ...claims[category] };
+      if (current === itemId) delete next[myName];
+      else next[myName] = itemId;
+      return { ...claims, [category]: next };
+    });
     setNotice(
-      pendingLockedPages.size
-        ? `Locked pages: ${Array.from(pendingLockedPages)
-            .sort((a, b) => a - b)
-            .join(", ")}`
-        : "All pages unlocked.",
+      current === itemId
+        ? isThai ? `ยกเลิกการลงชื่อ ${itemLabel(itemId)}` : `Removed your claim on ${itemLabel(itemId)}.`
+        : current
+          ? isThai ? `ย้ายการลงชื่อ ${categoryLabel(category)} มาที่ ${itemLabel(itemId)}` : `Moved your ${categoryLabel(category)} claim to ${itemLabel(itemId)}.`
+          : isThai ? `ลงชื่อ ${itemLabel(itemId)} แล้ว (จัดอันดับตามคิว)` : `Claimed ${itemLabel(itemId)} — ranked by queue order.`,
     );
   }
 
-  function releaseHeldPages() {
-    if (!isAuctionStarted || timeLeft > 0) {
-      setNotice("Finish the current round before releasing held pages.");
-      return;
+  function awardItem(itemId: number, member: string, category: QueueCategory) {
+    const label = itemLabel(itemId);
+    setItemList((items) => items.map((item) => (item.id === itemId ? { ...item, status: "claimed", claimedBy: member } : item)));
+    setReservations((current) => {
+      const existing = current.find((reservation) => reservation.member === member);
+      return existing
+        ? current.map((reservation) => (reservation.member === member ? { ...reservation, items: [...reservation.items, label] } : reservation))
+        : [...current, { member, items: [label] }];
+    });
+    setReservationRounds((rounds) => ({ ...rounds, [`${member}:${label}`]: roundNumber }));
+    setQueues((current) => ({ ...current, [category]: current[category].filter((entry) => entry.member !== member) }));
+    setQueueLog((current) => [{ id: Date.now() + itemId, time: Date.now(), round: roundNumber, category, itemName: label, member, result: "taken" }, ...current]);
+  }
+
+  // Round end: the best-ranked claimant of each tagged slot wins and leaves that queue; everyone else keeps their spot.
+  function resolveCategoryRound() {
+    const rankings: Record<number, string[]> = {};
+    let winners = 0;
+    queueCategories.forEach(({ id: category }) => {
+      const itemIds = [...new Set(Object.values(categoryClaims[category]))];
+      itemIds.forEach((itemId) => {
+        const ranked = rankedClaimants(itemId, category);
+        rankings[itemId] = ranked;
+        if (ranked[0]) {
+          awardItem(itemId, ranked[0], category);
+          winners += 1;
+        }
+      });
+    });
+    setSlotRankings(rankings);
+    setCategoryClaims(emptyClaims());
+    setRoundResolved(true);
+    setRoundEndedNotice(true);
+    if (winners) setNotice(isThai ? `สรุปหมวดคิวแล้ว: ${winners} ช่องมีผู้ได้ของ` : `Queue categories resolved: ${winners} slots awarded.`);
+  }
+
+  function endRoundNow() {
+    if (!isAdmin || !isAuctionStarted || timeLeft <= 0) return;
+    setTimeLeft(0);
+  }
+
+  // Admin marks a winner who did not buy in game as passed; the slot goes to the next-ranked claimant.
+  function declineWinner(itemId: number) {
+    const category = categoryOfItem(itemId);
+    const item = itemList.find((entry) => entry.id === itemId);
+    if (!isAdmin || !category || !item?.claimedBy) return;
+    const winner = item.claimedBy;
+    const label = itemLabel(itemId);
+    setReservations((current) =>
+      current
+        .map((reservation) => (reservation.member === winner ? { ...reservation, items: reservation.items.filter((entry) => entry !== label) } : reservation))
+        .filter((reservation) => reservation.items.length > 0),
+    );
+    setItemList((items) => items.map((entry) => (entry.id === itemId ? { ...entry, status: "available", claimedBy: undefined } : entry)));
+    setQueueLog((current) => [{ id: Date.now(), time: Date.now(), round: roundNumber, category, itemName: label, member: winner, result: "declined" }, ...current]);
+    const remaining = (slotRankings[itemId] ?? []).filter((member) => member !== winner);
+    setSlotRankings((current) => ({ ...current, [itemId]: remaining }));
+    if (remaining[0]) {
+      awardItem(itemId, remaining[0], category);
+      setNotice(isThai ? `${winner} สละสิทธิ์ ${label} → โอนให้ ${remaining[0]}` : `${winner} passed on ${label} → awarded to ${remaining[0]}.`);
+    } else {
+      setNotice(isThai ? `${winner} สละสิทธิ์ ${label} — ไม่มีคนถัดไปในช่องนี้` : `${winner} passed on ${label} — nobody else claimed it.`);
     }
-    setHeldPagesRound(true);
-    setRoundNumber((round) => (round === 0 ? 1 : round + 1));
-    setTimeLeft(durationMinutes * 60);
-    setIsAuctionStarted(false);
-    setCountdown(3);
-    setNotice("Held pages are preparing for the next round.");
   }
 
   function toggleAdminMember(member: string) {
@@ -609,32 +713,6 @@ function App() {
     if (member !== userName && !isAdmin) return;
     setQueues((current) => ({ ...current, [category]: current[category].filter((entry) => entry.member !== member) }));
     setNotice(isThai ? `${member} ออกจากคิว ${category.toUpperCase()} แล้ว` : `${member} left the ${category} queue.`);
-  }
-
-  function openOffer(category: QueueCategory, itemName: string, job: number | null) {
-    if (!isAdmin || offer) return;
-    setOffer({ id: Date.now(), category, itemName, job, openedAt: Date.now() });
-    setNotice(isThai ? `เปิดประมูล ${itemName}` : `${itemName} is up for auction.`);
-  }
-
-  function resolveOffer(member: string, result: "taken" | "declined") {
-    if (!offer || (member !== userName && !isAdmin)) return;
-    // Taking or passing both end the member's turn: they leave the queue and must register again.
-    setQueues((current) => ({ ...current, [offer.category]: current[offer.category].filter((entry) => entry.member !== member) }));
-    setQueueLog((current) => [{ id: Date.now(), time: Date.now(), category: offer.category, itemName: offer.itemName, job: offer.job, member, result }, ...current]);
-    if (result === "taken") setOffer(null);
-    setNotice(
-      result === "taken"
-        ? isThai ? `${member} รับ ${offer.itemName} แล้ว` : `${member} took ${offer.itemName}.`
-        : isThai ? `${member} สละสิทธิ์ ${offer.itemName} — ไปคิวถัดไป` : `${member} passed on ${offer.itemName} — moving to the next in line.`,
-    );
-  }
-
-  function closeOffer() {
-    if (!isAdmin || !offer) return;
-    setQueueLog((current) => [{ id: Date.now(), time: Date.now(), category: offer.category, itemName: offer.itemName, job: offer.job, member: null, result: "no-taker" }, ...current]);
-    setOffer(null);
-    setNotice(isThai ? "ปิดรายการประมูลแล้ว" : "Offer closed.");
   }
 
   function removeMember(name: string) {
@@ -861,13 +939,14 @@ function App() {
               <p className="eyebrow">ADMIN CONTROLS</p>
               <h2>Manage auction round</h2>
               <small>
-                {heldPagesRound
-                  ? "Held-page round: only locked pages are open."
-                  : `Round open except locked pages: ${
-                      Array.from(lockedPages)
-                        .sort((a, b) => a - b)
-                        .join(", ") || "none"
-                    }`}
+                {pagesByCategory(pageCategories).some(({ pages }) => pages.length)
+                  ? pagesByCategory(pageCategories)
+                      .filter(({ pages }) => pages.length)
+                      .map(({ category, pages }) => `${categoryLabel(category)}: ${pages.join(", ")}`)
+                      .join(" · ")
+                  : isThai
+                    ? "ยังไม่ได้ติดป้ายหมวดคิว ทุกหน้าเป็นการจองปกติ"
+                    : "No queue pages tagged — every page is a normal reservation."}
               </small>
             </div>
             <label>
@@ -887,7 +966,7 @@ function App() {
               className="admin-button secondary"
               onClick={openAdminPagePicker}
             >
-              <Lock size={14} /> Select pages ({lockedPages.size})
+              <Tag size={14} /> {isThai ? "ติดป้ายหน้า" : "Tag pages"} ({Object.keys(pageCategories).length})
             </button>
             <button
               type="button"
@@ -900,9 +979,10 @@ function App() {
             <button
               type="button"
               className="admin-button release"
-              onClick={releaseHeldPages}
+              disabled={!isAuctionStarted || countdown !== null || timeLeft <= 0}
+              onClick={endRoundNow}
             >
-              Release held pages
+              {isThai ? "ปิดรอบ & สรุปผล" : "End round & resolve"}
             </button>
           </section>
         )}
@@ -922,8 +1002,9 @@ function App() {
             >
               <div className="page-modal-header">
                 <div>
-                  <p className="eyebrow">ADMIN PAGE LOCKS</p>
-                  <h2 id="admin-page-picker-title">Select pages to lock</h2>
+                  <p className="eyebrow">QUEUE PAGES</p>
+                  <h2 id="admin-page-picker-title">{isThai ? "ติดป้ายหน้าเป็น Gear / Card / Relic" : "Tag pages as Gear / Card / Relic"}</h2>
+                  <small className="event-dialog-status">{isThai ? "กดซ้ำเพื่อวนเปลี่ยน: ปกติ → Gear → Card → Relic" : "Click to cycle: normal → Gear → Card → Relic"}</small>
                 </div>
                 <button
                   type="button"
@@ -961,15 +1042,13 @@ function App() {
                 ).map((page) => (
                   <button
                     type="button"
-                    className={
-                      pendingLockedPages.has(page) ? "active locked-choice" : ""
-                    }
+                    className={pendingPageCategories[page] ? `active cat-${pendingPageCategories[page]}` : ""}
                     key={page}
-                    onClick={() => togglePendingPage(page)}
+                    onClick={() => cyclePendingPage(page)}
                   >
-                    {pendingLockedPages.has(page) ? (
+                    {pendingPageCategories[page] ? (
                       <>
-                        <Lock size={12} /> Page {page}
+                        <Tag size={12} /> {page} · {pendingPageCategories[page].toUpperCase()}
                       </>
                     ) : (
                       `Page ${page}`
@@ -978,13 +1057,13 @@ function App() {
                 ))}
               </div>
               <div className="admin-modal-footer">
-                <span>{pendingLockedPages.size} pages selected</span>
+                <span>{Object.keys(pendingPageCategories).length} {isThai ? "หน้าที่ติดป้าย" : "pages tagged"}</span>
                 <button
                   type="button"
                   className="admin-button"
-                  onClick={applyPageLocks}
+                  onClick={applyPageCategories}
                 >
-                  Apply locks
+                  {isThai ? "บันทึก" : "Apply"}
                 </button>
               </div>
             </section>
@@ -1019,20 +1098,18 @@ function App() {
         </section>
         <section className="page-blocks" aria-label="Auction item pages">
           {pageBlocks.map((pageBlock) => {
-            const pageIsLocked = heldPagesRound
-              ? !lockedPages.has(pageBlock.page)
-              : lockedPages.has(pageBlock.page);
+            const category = pageCategories[pageBlock.page];
             return (
               <section
-                className={`page-block ${pageIsLocked ? "page-locked" : ""}`}
+                className={`page-block ${category ? `page-queue cat-${category}` : ""}`}
                 key={pageBlock.page}
                 aria-label={`Page ${pageBlock.page}`}
               >
                 <div className="page-label">
                   Page <strong>{pageBlock.page}</strong>
-                  {pageIsLocked && (
-                    <small>
-                      <Lock size={11} /> Locked
+                  {category && (
+                    <small className={`cat-badge cat-${category}`}>
+                      <Tag size={11} /> {category.toUpperCase()}
                     </small>
                   )}
                 </div>
@@ -1040,7 +1117,72 @@ function App() {
                   {pageBlock.items.map((item, itemIndex) => {
                     const isMine =
                       item.status === "claimed" &&
-                      item.claimedBy === ign.trim();
+                      item.claimedBy === myName;
+                    if (category) {
+                      const ranked = rankedClaimants(item.id, category);
+                      const myRank = ranked.indexOf(myName);
+                      const myClaim = categoryClaims[category][myName];
+                      const queued = inQueue(category, myName);
+                      const canClaim = isAuthenticated && queued && !isAuctionClosed && item.status !== "claimed";
+                      return (
+                        <article className={`item-card queue-slot ${item.status} ${myRank >= 0 ? "mine-claim" : ""}`} key={item.id}>
+                          <div className="item-info">
+                            <h3>Item {itemIndex + 1}</h3>
+                            {item.status === "claimed" ? (
+                              <small className="reserved-by">
+                                {isThai ? "ได้ของ" : "Won by"} {item.claimedBy}
+                              </small>
+                            ) : ranked.length > 0 ? (
+                              <ol className="claimants">
+                                {ranked.slice(0, 3).map((member, index) => (
+                                  <li key={member} className={member === myName ? "me" : ""}>
+                                    <b>{index + 1}</b> {member}
+                                  </li>
+                                ))}
+                                {ranked.length > 3 && <li className="more">+{ranked.length - 3}</li>}
+                              </ol>
+                            ) : (
+                              <small>{isThai ? "ยังไม่มีคนลงชื่อ" : "No claims yet"}</small>
+                            )}
+                          </div>
+                          {item.status === "claimed" && isAdmin && roundResolved ? (
+                            <button className="claim-button decline" type="button" onClick={() => declineWinner(item.id)}>
+                              <X size={14} /> {isThai ? "สละสิทธิ์ → คนถัดไป" : "Passed → next"}
+                            </button>
+                          ) : (
+                            <button
+                              className={`claim-button ${myRank >= 0 ? "on-slot" : ""}`}
+                              type="button"
+                              disabled={!canClaim}
+                              title={!queued && isAuthenticated ? (isThai ? `ต้องลงคิว ${categoryLabel(category)} ก่อน` : `Join the ${categoryLabel(category)} queue first`) : undefined}
+                              onClick={() => claimItem(item.id)}
+                            >
+                              {item.status === "claimed" ? (
+                                <>{isThai ? "จบรอบแล้ว" : "Resolved"}</>
+                              ) : !isAuthenticated ? (
+                                <>{copy.reserve}</>
+                              ) : !queued ? (
+                                <>
+                                  <ListOrdered size={14} /> {isThai ? "ต้องลงคิว" : "Queue first"}
+                                </>
+                              ) : myRank >= 0 ? (
+                                <>
+                                  <Trash2 size={14} /> {isThai ? `ยกเลิก (อันดับ ${myRank + 1})` : `Cancel (#${myRank + 1})`}
+                                </>
+                              ) : myClaim ? (
+                                <>
+                                  <Package size={14} /> {isThai ? "ย้ายมาช่องนี้" : "Move here"}
+                                </>
+                              ) : (
+                                <>
+                                  <Package size={14} /> {isThai ? "ลงชื่อ" : "Claim"}
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </article>
+                      );
+                    }
                     return (
                       <article
                         className={`item-card ${item.status}`}
@@ -1059,7 +1201,6 @@ function App() {
                           type="button"
                           disabled={
                             !isAuthenticated ||
-                            pageIsLocked ||
                             (isAuctionClosed && !isMine) ||
                             (item.status === "claimed" && !isMine) ||
                             (reachedLimit && !isMine)
@@ -1304,13 +1445,13 @@ function App() {
             jobs={jobs}
             members={members}
             queues={queues}
-            offer={offer}
+            claims={categoryClaims}
+            pages={pagesByCategory(pageCategories)}
+            roundOpen={!isAuctionClosed}
             log={queueLog}
             onJoin={joinQueue}
             onLeave={leaveQueue}
-            onOpenOffer={openOffer}
-            onResolve={resolveOffer}
-            onCloseOffer={closeOffer}
+            onGoToAuction={() => setActiveView("auction")}
           />
         </div>
       )}

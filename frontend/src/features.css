@@ -394,3 +394,30 @@
   .history-list li { grid-template-columns: 1fr auto; row-gap: 4px; }
   .history-time { grid-column: 1 / -1; }
 }
+
+/* ---------- Queue-category pages on the auction grid ---------- */
+.cat-gear { --cat: #3a95e8; --cat-ink: #06172b; }
+.cat-card { --cat: #9d78ea; --cat-ink: #150a2b; }
+.cat-relic { --cat: #e3b53c; --cat-ink: #261703; }
+.page-block.page-queue { background: color-mix(in srgb, var(--cat) 8%, transparent); }
+.page-block.page-queue .page-label strong { color: var(--cat); }
+.page-label .cat-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: max-content; margin: 5px 0 0 auto; padding: 3px 7px; color: var(--cat-ink); background: var(--cat); border-radius: 4px; font: 800 9px 'DM Mono', monospace; letter-spacing: .08em; line-height: 1; }
+.admin-page-grid button.active[class*="cat-"] { color: var(--cat-ink); background: var(--cat); border-color: var(--cat); }
+.item-card.queue-slot { border-color: color-mix(in srgb, var(--cat) 35%, #2b302c); }
+.item-card.queue-slot.mine-claim { box-shadow: inset 0 0 0 1px var(--cat); }
+.claimants { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 0; padding: 0; list-style: none; }
+.claimants li { display: flex; align-items: center; gap: 5px; color: #9aa697; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.claimants li b { min-width: 13px; color: var(--cat); font: 800 9px 'DM Mono', monospace; }
+.claimants li:first-child { color: #e8eee6; font-weight: 700; }
+.claimants li.me { color: #b9e86d; }
+.claimants li.more { color: #6f7c6d; }
+.claim-button.on-slot { color: #cfddca; background: #344232; }
+.claim-button.decline { color: #fff; background: #c6483c; }
+.claim-button.decline:hover { background: #de5a4d; }
+.queue-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 18px; padding: 10px 14px; color: #9aa697; background: #171a18; border: 1px solid #2b302c; border-radius: 8px; font-size: 11px; }
+.queue-steps span { display: inline-flex; align-items: center; gap: 6px; }
+.queue-steps b { display: grid; place-items: center; width: 18px; height: 18px; color: #172012; background: #b9e86d; border-radius: 50%; font: 800 10px 'DM Mono', monospace; }
+.queue-card header em { display: inline-flex; align-items: center; gap: 3px; color: #e8c46a; font-style: normal; }
+.my-position { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.link-button { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; padding: 0; color: #b9e86d; background: none; border: 0; font-size: 11px; font-weight: 700; }
+.link-button:hover { text-decoration: underline; }

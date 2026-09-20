@@ -8,9 +8,10 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 - Uses the signed-in Discord display name as the reservation name (must match a roster name for queue eligibility)
 - Displays 4 items per selected page (200 items total across 50 pages)
 - Uses a popup page selector showing Pages 1-25, with a next set for Pages 26-50
-- Supports per-page holds; all pages start open and the admin chooses which pages to hold
-- Admin can lock/unlock a page and release only held pages after the first round
-- Admin can manage multiple pages at once with comma-separated input such as `4, 5, 15`
+- Admin tags pages as Gear / Card / Relic ("Tag pages"); untagged pages stay normal first-come reservations
+- On tagged pages only members in that category's queue can claim, one slot per category per round (claims can be moved); several members may claim the same slot and are ranked by queue position
+- When the round ends (timer or "End round & resolve") the top-ranked claimant of each slot wins, is added to the reservation summary and leaves that queue; everyone else keeps their queue spot
+- After a round an admin can mark a winner who did not buy in game as "Passed → next", which hands the slot to the next-ranked claimant
 - Admins get an "Admin config" tab (also reachable from the ADMIN badge menu, `#admin`) to grant or remove admin access for guild members; non-admins are redirected away from it
 - Auction starts locked; after setting the duration, Admin must press Start round and wait for the 3-2-1 countdown before reservations open
 - Reserve available items and update the live claimed count; each member can hold at most 5 reservations per session (counter on the round card, Reserve buttons disable at the cap)
@@ -18,7 +19,7 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 - Reservation summary grouped by guild member
 - Copy the summary list for Discord
 - Responsive layout for desktop, tablet (iPad portrait/landscape) and phone; the weekly grid scrolls sideways on narrow screens and auto-centres on today
-- Auction queue: members queue up for Gear / Card / Relic (any or all); when an admin puts an item up (type, name, job or any job) the queue is walked from the front — non-matching jobs are skipped and keep their spot, the first matching member takes or passes, and either way leaves the queue; history log of every outcome
+- Auction queue tab: members queue up for Gear / Card / Relic (any or all), see their position, which pages are tagged this round and their current claim; history log of every win/pass
 - Weekly activity schedule on real calendar dates (Tuesday, Thursday and Sunday activities are highlighted as guild days) (all activity cards share one neutral style; a hammer marks guild activities) (Mon-Sun x time slots, matching the in-game activity board) with previous/next week and Today navigation; today's column is highlighted
 - Members tap an activity to register as playing or mark leave; admins can record playing/leave for any member and clear entries; each card shows the playing/leave count
 - "Registrations by date" summary under the grid lists who is playing and who is on leave per event per day, with a copy-for-Discord button
@@ -60,7 +61,8 @@ This repo is the UI. The backend/database is built separately; everything below 
 | `members` | `{ name, job, custom? }[]` | roster, team planner, schedule admin picker |
 | `jobs` | `{ id, label, color }[]` | card colours, chart, job manager |
 | `teamAssignments` | `{ [memberName]: "A-3" }` | team planner |
-| `queues` / `offer` / `queueLog` | `{ gear|card|relic: { member, joinedAt }[] }`, current offer `{ category, itemName, job\|null }`, outcome log | auction queue |
+| `queues` / `categoryClaims` / `slotRankings` / `queueLog` | `{ gear|card|relic: { member, joinedAt }[] }`, claims `{ category: { member: itemId } }`, rankings per slot at resolution, outcome log | auction queue + tagged pages |
+| `pageCategories` | `{ [page]: "gear" \| "card" \| "relic" }` | tagged auction pages |
 | `attendance` | `{ ["YYYY-MM-DD:eventId"]: { [memberName]: "joined" \| "leave" } }` | schedule, roster by date |
 | `scheduleEvents` | static weekly template in `data/guild.ts` | schedule grid |
 | auth | `isAuthenticated`, `userName`, `isAdmin` (mocked by the Sign in button as roster member "Gantzping") | every admin-only control |
