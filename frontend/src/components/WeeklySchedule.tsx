@@ -168,7 +168,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
           <span className="schedule-corner" />
           {days.map((date, index) => (
             <span
-              className={`schedule-day ${guildDays.includes(index) ? "guild-day" : ""} ${dayKeys[index] === todayKey ? "today" : ""}`}
+              className={`schedule-day ${dayKeys[index] === todayKey ? "today" : ""}`}
               key={dayKeys[index]}
               role="columnheader"
             >
@@ -265,7 +265,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
             if (entries.length === 0) return null;
             const hasAny = entries.some((entry) => entry.joined.length || entry.leave.length);
             return (
-              <article className={`day-card ${dateKey === todayKey ? "today" : ""} ${guildDays.includes(day) ? "guild-day" : ""}`} key={dateKey}>
+              <article className={`day-card ${dateKey === todayKey ? "today" : ""}`} key={dateKey}>
                 <header>
                   <span className="day-card-dow">{shortNames[day]}</span>
                   <strong>{formatDay(days[day], isThai)}</strong>

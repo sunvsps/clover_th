@@ -318,14 +318,10 @@
 }
 
 /* ---------- Guild-day highlight on the schedule ---------- */
-.schedule-day.guild-day { background: linear-gradient(180deg, #7a5a1c, #5c4212); color: #fff3d6; }
-.schedule-day.guild-day.today { background: linear-gradient(180deg, #4d6a2d, #33461f); color: #f2ffdf; }
 .schedule-event.highlight { color: #3a2a05; background: #f6d98a; box-shadow: inset 0 0 0 1px #c9a24a; }
 .schedule-event.highlight .event-time { color: #7a5408; }
 .schedule-event.highlight .guild-mark { color: #8a4c05; }
 .legend-swatch.highlight { background: #f6d98a; }
-.day-card.guild-day { border-color: #7a5a1c; }
-.day-card.guild-day .day-card-dow { color: #e8c46a; }
 
 /* ---------- Auction queue ---------- */
 .queue-warning { margin: 0 0 16px; padding: 10px 14px; color: #ffd2cb; background: #4a2723; border: 1px solid #7a3d35; border-radius: 8px; font-size: 12px; }
