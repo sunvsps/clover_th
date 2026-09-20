@@ -1,0 +1,362 @@
+// Clover_TH backend schema (docs/backend-design.md 4.2).
+// Constraints Prisma cannot express live in the *_raw_constraints migration (see 4.4).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MemberSource {
+  BOT
+  MANUAL
+}
+
+enum AuctionType {
+  LIVE_CLAIM
+  QUEUE_RANKED
+}
+
+enum RoundStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum ItemCategory {
+  PET
+  MATERIAL
+  GEMBOX
+  GEAR
+  CARD
+  RELIC
+}
+
+enum RegistrationStatus {
+  JOINED
+  WAITLISTED
+  LEAVE
+}
+
+enum WinSource {
+  CLAIM
+  ALLOCATION
+}
+
+enum PlacementSource {
+  ADMIN
+  COPY
+  AUTO_BACKFILL
+}
+
+enum BackfillReason {
+  UNREGISTERED
+  LEAVE
+  DEACTIVATED
+}
+
+enum ActorType {
+  MEMBER
+  BOT
+  SYSTEM
+}
+
+enum NotifyTarget {
+  DISCORD_DM
+  DISCORD_CHANNEL
+}
+
+enum NotifyStatus {
+  PENDING
+  SENDING
+  SENT
+  DEAD
+}
+
+// ---------- Identity ----------
+model Job {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique
+  color     String
+  sortOrder Int      @default(0)
+  members   Member[]
+}
+
+model Member {
+  id            String       @id @default(uuid()) @db.Uuid
+  discordId     String       @unique
+  ign           String
+  nickname      String?
+  jobId         Int
+  job           Job          @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  isAdmin       Boolean      @default(false)
+  isActive      Boolean      @default(true)
+  deactivatedAt DateTime?
+  source        MemberSource @default(BOT)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  sessions      Session[]
+  registrations Registration[]      @relation("RegistrationMember")
+  regUpdates    Registration[]      @relation("RegistrationUpdatedBy")
+  placements    Placement[]         @relation("PlacementMember")
+  placedBy      Placement[]         @relation("PlacementPlacedBy")
+  backfilledFor Placement[]         @relation("PlacementBackfilledFor")
+  wonItems      AuctionItem[]
+  createdRounds AuctionRound[]
+  queueEntries  QueueEntry[]
+  preferences   Preference[]
+  snapshots     RoundQueueSnapshot[]
+  notifications NotificationOutbox[]
+  // RAW SQL: member_ign_active unique index on lower(normalize(ign, NFC)) WHERE "isActive"
+}
+
+model Session {
+  id        String   @id
+  memberId  String   @db.Uuid
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  lastSeen  DateTime @default(now())
+
+  @@index([memberId])
+}
+
+// ---------- Schedule, registration, planner ----------
+model Activity {
+  id                   String          @id
+  name                 String
+  isGuild              Boolean         @default(false)
+  hasPlanner           Boolean         @default(false)
+  registrationCapacity Int?
+  autoBackfill         Boolean         @default(false)
+  notifyChannelId      String?
+  sortOrder            Int             @default(0)
+  events               ScheduleEvent[]
+  rooms                Room[]
+  // RAW SQL: CHECK (NOT "autoBackfill" OR "hasPlanner")
+}
+
+model ScheduleEvent {
+  id          String       @id
+  activityId  String
+  activity    Activity     @relation(fields: [activityId], references: [id], onDelete: Restrict)
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  sortOrder   Int          @default(0)
+  occurrences Occurrence[]
+}
+
+model Occurrence {
+  id            Int            @id @default(autoincrement())
+  eventId       String
+  event         ScheduleEvent  @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  date          DateTime       @db.Date
+  startsAt      DateTime
+  planVersion   Int            @default(0)
+  registrations Registration[]
+  placements    Placement[]
+
+  @@unique([eventId, date])
+}
+
+model Registration {
+  id           Int                @id @default(autoincrement())
+  occurrenceId Int
+  memberId     String             @db.Uuid
+  status       RegistrationStatus
+  registeredAt DateTime
+  updatedById  String?            @db.Uuid
+  occurrence   Occurrence         @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  member       Member             @relation("RegistrationMember", fields: [memberId], references: [id], onDelete: Restrict)
+  updatedBy    Member?            @relation("RegistrationUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([occurrenceId, memberId])
+  @@index([occurrenceId, status, registeredAt])
+}
+
+model Room {
+  id         Int       @id @default(autoincrement())
+  activityId String
+  key        String
+  name       String
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+  activity   Activity  @relation(fields: [activityId], references: [id], onDelete: Restrict)
+  teams      Team[]
+  // RAW SQL: room_key_live unique index on ("activityId","key") WHERE "archivedAt" IS NULL
+}
+
+model Team {
+  id         Int         @id @default(autoincrement())
+  roomId     Int
+  name       String
+  size       Int         @default(5)
+  sortOrder  Int         @default(0)
+  archivedAt DateTime?
+  room       Room        @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  placements Placement[]
+}
+
+model Placement {
+  id                    Int             @id @default(autoincrement())
+  occurrenceId          Int
+  memberId              String          @db.Uuid
+  teamId                Int
+  slot                  Int
+  source                PlacementSource @default(ADMIN)
+  backfilledForMemberId String?         @db.Uuid
+  backfillReason        BackfillReason?
+  placedById            String?         @db.Uuid
+  placedAt              DateTime        @default(now())
+  occurrence            Occurrence      @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  team                  Team            @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  member                Member          @relation("PlacementMember", fields: [memberId], references: [id], onDelete: Restrict)
+  placedBy              Member?         @relation("PlacementPlacedBy", fields: [placedById], references: [id], onDelete: Restrict)
+  backfilledFor         Member?         @relation("PlacementBackfilledFor", fields: [backfilledForMemberId], references: [id], onDelete: Restrict)
+
+  @@unique([occurrenceId, memberId])
+  @@unique([occurrenceId, teamId, slot])
+  // RAW SQL: CHECK (slot >= 1)
+}
+
+// ---------- Auctions ----------
+model AuctionRound {
+  id               Int                  @id @default(autoincrement())
+  type             AuctionType
+  name             String
+  status           RoundStatus          @default(DRAFT)
+  durationSec      Int                  @default(300)
+  winCap           Int?
+  startDelaySec    Int                  @default(3)
+  opensAt          DateTime?
+  closesAt         DateTime?
+  closedAt         DateTime?
+  allocatedAt      DateTime?
+  algorithmVersion Int?
+  sourceRoundId    Int?                 @unique
+  sourceRound      AuctionRound?        @relation("LeftoverDraft", fields: [sourceRoundId], references: [id], onDelete: SetNull)
+  leftoverDraft    AuctionRound?        @relation("LeftoverDraft")
+  createdById      String               @db.Uuid
+  createdBy        Member               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt        DateTime             @default(now())
+  items            AuctionItem[]
+  cutoffs          RoundQueueCutoff[]
+  snapshots        RoundQueueSnapshot[]
+  preferences      Preference[]
+  // RAW SQL: one_open_per_type unique index on (type) WHERE status = 'OPEN'
+  // RAW SQL: CHECK ((type = 'LIVE_CLAIM') = ("winCap" IS NOT NULL))
+}
+
+model AuctionItem {
+  id          Int          @id @default(autoincrement())
+  roundId     Int
+  round       AuctionRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  name        String
+  category    ItemCategory
+  rarity      String?
+  imageUrl    String?
+  sortOrder   Int          @default(0)
+  winnerId    String?      @db.Uuid
+  winner      Member?      @relation(fields: [winnerId], references: [id], onDelete: Restrict)
+  wonAt       DateTime?
+  winSource   WinSource?
+  queuePos    Int?
+  preferences Preference[]
+
+  @@index([roundId, winnerId])
+  // RAW SQL: CHECK (("winnerId" IS NULL) = ("wonAt" IS NULL))
+}
+
+model QueueEntry {
+  id       Int          @id @default(autoincrement())
+  category ItemCategory
+  memberId String       @db.Uuid
+  member   Member       @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  joinedAt DateTime     @default(dbgenerated("clock_timestamp()"))
+
+  @@unique([category, memberId])
+}
+
+model RoundQueueCutoff {
+  roundId  Int
+  round    AuctionRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  category ItemCategory
+  cutoffId Int
+
+  @@id([roundId, category])
+}
+
+model RoundQueueSnapshot {
+  roundId  Int
+  round    AuctionRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  category ItemCategory
+  memberId String       @db.Uuid
+  member   Member       @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  position Int
+
+  @@id([roundId, category, memberId])
+}
+
+model Preference {
+  roundId  Int
+  round    AuctionRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  memberId String       @db.Uuid
+  member   Member       @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  itemId   Int
+  item     AuctionItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  rank     Int
+
+  @@id([roundId, memberId, itemId])
+  @@unique([roundId, memberId, rank])
+}
+
+// ---------- Notifications ----------
+model NotificationOutbox {
+  id                 Int          @id @default(autoincrement())
+  eventType          String
+  target             NotifyTarget
+  recipientMemberId  String?      @db.Uuid
+  recipient          Member?      @relation(fields: [recipientMemberId], references: [id], onDelete: Restrict)
+  recipientDiscordId String?
+  channelId          String?
+  payload            Json
+  dedupeKey          String       @unique
+  entityType         String?
+  entityId           String?
+  status             NotifyStatus @default(PENDING)
+  attempts           Int          @default(0)
+  maxAttempts        Int          @default(8)
+  nextAttemptAt      DateTime     @default(now())
+  lockedAt           DateTime?
+  lastError          String?
+  lastErrorCode      String?
+  sentAt             DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([entityType, entityId])
+}
+
+// ---------- Audit ----------
+model AuditLog {
+  id         Int       @id @default(autoincrement())
+  at         DateTime  @default(dbgenerated("clock_timestamp()"))
+  actorType  ActorType
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  meta       Json?
+  requestId  String?
+
+  @@index([at(sort: Desc)])
+  @@index([action, at])
+  @@index([entityType, entityId])
+}
