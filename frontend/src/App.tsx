@@ -48,6 +48,8 @@ const items: Item[] = Array.from({ length: 200 }, (_, index) => {
   };
 });
 
+const MAX_RESERVATIONS = 5;
+
 type GuildView = "auction" | "calendar" | "teams" | "admin";
 
 function viewFromHash(): GuildView {
@@ -60,7 +62,8 @@ function App() {
   const [userName, setUserName] = useState("");
   const [ign, setIgn] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [hasAdminRole, setHasAdminRole] = useState(false); // granted by the backend role check
+  const [isAdmin, setIsAdmin] = useState(false); // currently viewing as admin
   const [roundNumber, setRoundNumber] = useState(0);
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [isAuctionStarted, setIsAuctionStarted] = useState(false);
@@ -105,6 +108,8 @@ function App() {
       })),
     [currentPage, visibleItems],
   );
+  const myClaimedCount = itemList.filter((item) => item.status === "claimed" && item.claimedBy === ign.trim()).length;
+  const reachedLimit = myClaimedCount >= MAX_RESERVATIONS;
   const claimedCount = itemList.filter(
     (item) => item.status === "claimed",
   ).length;
@@ -201,6 +206,7 @@ function App() {
     setIsAuthenticated(true);
     setUserName("Mew");
     setIgn("Mew");
+    setHasAdminRole(true);
     setIsAdmin(true);
   }
 
@@ -264,6 +270,15 @@ function App() {
         !isAuctionStarted
           ? "The admin has not started this round yet."
           : "This round has ended.",
+      );
+      return;
+    }
+
+    if (reachedLimit) {
+      setNotice(
+        isThai
+          ? `จองได้สูงสุด ${MAX_RESERVATIONS} ชิ้นต่อคน ยกเลิกรายการเดิมก่อนถ้าต้องการเปลี่ยน`
+          : `You can reserve up to ${MAX_RESERVATIONS} items. Remove one to reserve another.`,
       );
       return;
     }
@@ -634,6 +649,28 @@ function App() {
                       </div>
                     )}
                   </div>
+                ) : hasAdminRole ? (
+                  <div className="role-menu-wrap">
+                    <button className="top-user-badge role-switch" type="button" onClick={() => setRoleMenuOpen((open) => !open)}>
+                      USER <ChevronDown size={11} />
+                    </button>
+                    {roleMenuOpen && (
+                      <div className="role-menu">
+                        <strong>Current role</strong>
+                        <span>User view (admin available)</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAdmin(true);
+                            setRoleMenuOpen(false);
+                            setNotice(isThai ? "สลับกลับเป็นมุมมองแอดมินแล้ว" : "Switched back to Admin view.");
+                          }}
+                        >
+                          <Crown size={12} /> Switch to ADMIN view
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <span className="top-user-badge">USER</span>
                 )}
@@ -644,6 +681,8 @@ function App() {
                   onClick={() => {
                     setIsAuthenticated(false);
                     setIsAdmin(false);
+                    setHasAdminRole(false);
+                    setRoleMenuOpen(false);
                     if (activeView === "admin") setActiveView("auction");
                   }}
                   title="Sign out"
@@ -711,6 +750,11 @@ function App() {
             <small>
               {isAuctionClosed ? "Round closed" : `${formattedTime} remaining`}
             </small>
+            {isAuthenticated && (
+              <em className={`quota ${reachedLimit ? "full" : ""}`}>
+                <Package size={11} /> {isThai ? "จองแล้ว" : "Reserved"} {myClaimedCount}/{MAX_RESERVATIONS}
+              </em>
+            )}
           </div>
         </section>
 
@@ -952,7 +996,8 @@ function App() {
                             !isAuthenticated ||
                             pageIsLocked ||
                             (isAuctionClosed && !isMine) ||
-                            (item.status === "claimed" && !isMine)
+                            (item.status === "claimed" && !isMine) ||
+                            (reachedLimit && !isMine)
                           }
                           onClick={() => claimItem(item.id)}
                         >

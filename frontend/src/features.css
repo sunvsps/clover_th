@@ -21,6 +21,11 @@
 .pool-title span { color: #7c8879; font: 10px 'DM Mono', monospace; }
 .empty-search { margin: 14px 0 0; color: #6f7c6d; font-size: 12px; }
 
+.top-user-badge.role-switch { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+.top-user-badge.role-switch:hover { color: #172012; background: #b9e86d; border-color: #b9e86d; }
+.season-card .quota { display: flex; width: max-content; align-items: center; gap: 5px; margin-top: 10px; padding: 4px 8px; color: #c9e8aa; background: #263523; border-radius: 10px; font: 700 10px 'DM Mono', monospace; font-style: normal; }
+.season-card .quota.full { color: #ffd2cb; background: #4a2723; }
+
 /* ---------- Weekly schedule ---------- */
 .schedule-stats { display: flex; gap: 14px; padding: 12px 16px; border: 1px solid #2b342b; background: linear-gradient(145deg, rgba(35, 48, 35, .75), rgba(18, 23, 19, .5)); border-radius: 10px; color: #a9b3a6; font-size: 11px; white-space: nowrap; }
 .schedule-stats span { display: flex; align-items: center; gap: 6px; }

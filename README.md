@@ -13,7 +13,8 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 - Admin can manage multiple pages at once with comma-separated input such as `4, 5, 15`
 - Admins get an "Admin config" tab (also reachable from the ADMIN badge menu, `#admin`) to grant or remove admin access for guild members; non-admins are redirected away from it
 - Auction starts locked; after setting the duration, Admin must press Start round and wait for the 3-2-1 countdown before reservations open
-- Reserve available items and update the live claimed count
+- Reserve available items and update the live claimed count; each member can hold at most 5 reservations per session (counter on the round card, Reserve buttons disable at the cap)
+- Admins can switch to the User view to preview it and switch back from the USER badge menu
 - Reservation summary grouped by guild member
 - Copy the summary list for Discord
 - Responsive layout for desktop, tablet (iPad portrait/landscape) and phone; the weekly grid scrolls sideways on narrow screens and auto-centres on today
