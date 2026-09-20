@@ -3,7 +3,14 @@
 .feature-nav button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 13px; color: #9aa697; background: transparent; border: 1px solid transparent; border-radius: 7px; font-size: 12px; font-weight: 600; transition: .2s ease; }
 .feature-nav button:hover { color: #d7e6cd; background: #1c221c; }
 .feature-nav button.active { color: #172012; background: #b9e86d; border-color: #b9e86d; }
+.feature-nav .admin-tab { margin-left: auto; border-color: #3a4a36; }
+.feature-nav .admin-tab.active { border-color: #b9e86d; }
 .hidden-view { display: none; }
+.feature-content .admin-config-page { margin-bottom: 0; }
+.admin-current { margin-top: 16px; }
+.admin-current .eyebrow { display: block; margin-bottom: 8px; }
+.admin-current .roster-people { margin-top: 0; }
+.admin-current .empty-search { margin: 0; }
 .feature-content { max-width: 1030px; margin: 0 auto; padding: 44px 38px 60px; }
 .feature-content.wide { max-width: 1320px; }
 .feature-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 26px; }

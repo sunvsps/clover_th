@@ -48,11 +48,11 @@ const items: Item[] = Array.from({ length: 200 }, (_, index) => {
   };
 });
 
-type GuildView = "auction" | "calendar" | "teams";
+type GuildView = "auction" | "calendar" | "teams" | "admin";
 
 function viewFromHash(): GuildView {
   const hash = window.location.hash.replace("#", "");
-  return hash === "calendar" || hash === "teams" ? hash : "auction";
+  return hash === "calendar" || hash === "teams" || hash === "admin" ? hash : "auction";
 }
 
 function App() {
@@ -73,7 +73,6 @@ function App() {
   const [pendingLockedPages, setPendingLockedPages] = useState<Set<number>>(
     () => new Set(),
   );
-  const [adminConfigOpen, setAdminConfigOpen] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [adminMembers, setAdminMembers] = useState<string[]>([]);
   const [adminSearch, setAdminSearch] = useState("");
@@ -154,6 +153,10 @@ function App() {
       window.history.pushState(null, "", activeView === "auction" ? " " : `#${activeView}`);
     }
   }, [activeView]);
+
+  useEffect(() => {
+    if (activeView === "admin" && !isAdmin) setActiveView("auction");
+  }, [activeView, isAdmin]);
 
   useEffect(() => {
     const syncView = () => setActiveView(viewFromHash());
@@ -611,9 +614,18 @@ function App() {
                         <button
                           type="button"
                           onClick={() => {
-                            setIsAdmin(false);
-                            setAdminConfigOpen(false);
+                            setActiveView("admin");
                             setRoleMenuOpen(false);
+                          }}
+                        >
+                          <Settings size={12} /> Admin config
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAdmin(false);
+                            setRoleMenuOpen(false);
+                            if (activeView === "admin") setActiveView("auction");
                             setNotice("Switched to User view.");
                           }}
                         >
@@ -632,6 +644,7 @@ function App() {
                   onClick={() => {
                     setIsAuthenticated(false);
                     setIsAdmin(false);
+                    if (activeView === "admin") setActiveView("auction");
                   }}
                   title="Sign out"
                 >
@@ -661,6 +674,11 @@ function App() {
         <button className={activeView === "teams" ? "active" : ""} type="button" onClick={() => setActiveView("teams")}>
           <Users size={15} /> {isThai ? "จัดทีมกิลด์" : "Team planner"}
         </button>
+        {isAdmin && (
+          <button className={`admin-tab ${activeView === "admin" ? "active" : ""}`} type="button" onClick={() => setActiveView("admin")}>
+            <Settings size={15} /> {isThai ? "ตั้งค่าแอดมิน" : "Admin config"}
+          </button>
+        )}
       </nav>
 
       <div id="top" className={`content ${activeView !== "auction" ? "hidden-view" : ""}`}>
@@ -777,74 +795,6 @@ function App() {
             >
               Release held pages
             </button>
-          </section>
-        )}
-
-        {adminConfigOpen && (
-          <section className="admin-config-page">
-            <div className="config-header">
-              <div>
-                <p className="eyebrow">
-                  <Settings size={12} /> ADMIN MENU / CONFIG
-                </p>
-                <h2>Manage administrators</h2>
-                <p>
-                  Choose which guild members can manage rounds, locks, and page
-                  settings.
-                </p>
-              </div>
-              <button
-                className="config-close"
-                type="button"
-                onClick={() => setAdminConfigOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <label className="admin-search">
-              <span>SEARCH MEMBERS</span>
-              <input
-                type="search"
-                placeholder="Search by name..."
-                value={adminSearch}
-                onChange={(event) => setAdminSearch(event.target.value)}
-              />
-            </label>
-            <div className="member-admin-list">
-              {filteredGuildMembers.map((member) => (
-                <label className="member-admin-row" key={member}>
-                  <span className="member-avatar">{member.charAt(0)}</span>
-                  <span>
-                    <strong>{member}</strong>
-                    <small>Discord guild member</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={adminMembers.includes(member)}
-                    onChange={() => toggleAdminMember(member)}
-                  />
-                </label>
-              ))}
-              {filteredGuildMembers.length === 0 && (
-                <p className="empty-search">No guild members found.</p>
-              )}
-            </div>
-            <div className="config-footer">
-              <span>
-                {adminMembers.length} admin
-                {adminMembers.length === 1 ? "" : "s"} selected
-              </span>
-              <button
-                className="admin-button"
-                type="button"
-                onClick={() => {
-                  setAdminConfigOpen(false);
-                  setNotice("Admin configuration saved.");
-                }}
-              >
-                Save configuration
-              </button>
-            </div>
           </section>
         )}
 
@@ -1158,6 +1108,82 @@ function App() {
         </footer>
       </div>
 
+      {activeView === "admin" && isAdmin && (
+        <div className="feature-content">
+          <section className="feature-page admin-config-page">
+            <div className="config-header">
+              <div>
+                <p className="eyebrow">
+                  <Settings size={12} /> ADMIN MENU / CONFIG
+                </p>
+                <h2>{isThai ? "จัดการผู้ดูแล" : "Manage administrators"}</h2>
+                <p>
+                  {isThai
+                    ? "เลือกสมาชิกกิลด์ที่มีสิทธิ์จัดการรอบประมูล ล็อกหน้า ตารางกิจกรรม การจัดทีม และรายชื่ออาชีพ"
+                    : "Choose which guild members can manage auction rounds, page locks, the schedule, team plans and the job list."}
+                </p>
+              </div>
+              <button className="config-close" type="button" onClick={() => setActiveView("auction")}>
+                {copy.close}
+              </button>
+            </div>
+            <div className="admin-current">
+              <span className="eyebrow">{isThai ? "ผู้ดูแลปัจจุบัน" : "CURRENT ADMINS"}</span>
+              <div className="roster-people">
+                <span className="person joined">
+                  <Crown size={10} /> {userName} ({isThai ? "คุณ" : "you"})
+                </span>
+                {adminMembers.map((member) => (
+                  <span className="person joined" key={member}>
+                    {member}
+                    <button type="button" onClick={() => toggleAdminMember(member)} aria-label={isThai ? "ถอดสิทธิ์" : "Remove admin"}>
+                      <X size={10} />
+                    </button>
+                  </span>
+                ))}
+                {adminMembers.length === 0 && <span className="empty-search">{isThai ? "ยังไม่ได้เพิ่มผู้ดูแลคนอื่น" : "No other admins yet."}</span>}
+              </div>
+            </div>
+            <label className="admin-search">
+              <span>{isThai ? "ค้นหาสมาชิก" : "SEARCH MEMBERS"}</span>
+              <input
+                type="search"
+                placeholder={isThai ? "ค้นหาด้วยชื่อ..." : "Search by name..."}
+                value={adminSearch}
+                onChange={(event) => setAdminSearch(event.target.value)}
+              />
+            </label>
+            <div className="member-admin-list">
+              {filteredGuildMembers.map((member) => (
+                <label className="member-admin-row" key={member}>
+                  <span className="member-avatar">{member.charAt(0)}</span>
+                  <span>
+                    <strong>{member}</strong>
+                    <small>{isThai ? "สมาชิกกิลด์" : "Discord guild member"}</small>
+                  </span>
+                  <input type="checkbox" checked={adminMembers.includes(member)} onChange={() => toggleAdminMember(member)} />
+                </label>
+              ))}
+              {filteredGuildMembers.length === 0 && <p className="empty-search">{isThai ? "ไม่พบสมาชิก" : "No guild members found."}</p>}
+            </div>
+            <div className="config-footer">
+              <span>
+                {adminMembers.length} {isThai ? "ผู้ดูแลที่เลือก" : `admin${adminMembers.length === 1 ? "" : "s"} selected`}
+              </span>
+              <button
+                className="admin-button"
+                type="button"
+                onClick={() => {
+                  setNotice(isThai ? "บันทึกการตั้งค่าผู้ดูแลแล้ว" : "Admin configuration saved.");
+                  setActiveView("auction");
+                }}
+              >
+                {isThai ? "บันทึกการตั้งค่า" : "Save configuration"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {activeView === "calendar" && (
         <div className="feature-content">
           <WeeklySchedule
