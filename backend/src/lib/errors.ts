@@ -19,6 +19,8 @@ export const errors = {
   oauthFailed: (why = 'OAuth exchange failed') => new AppError('AUTH_OAUTH_FAILED', 400, why),
   invalidJob: () => new AppError('INVALID_JOB', 422, 'Job is missing or not in the job list'),
   duplicateIgn: () => new AppError('DUPLICATE_IGN', 409, 'In-game name is already used by an active member'),
+  cannotDeactivateSelf: () =>
+    new AppError('CANNOT_DEACTIVATE_SELF', 409, 'You cannot deactivate your own account'),
   memberNotFound: () => new AppError('MEMBER_NOT_FOUND', 404, 'Member not found'),
   serviceBusy: () => new AppError('SERVICE_BUSY', 503, 'Service busy, please retry'),
 };

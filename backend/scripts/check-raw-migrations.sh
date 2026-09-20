@@ -11,11 +11,12 @@ expected=(
   'CONSTRAINT "placement_slot_positive" CHECK'
   'CONSTRAINT "round_wincap_only_live_claim" CHECK'
   'CONSTRAINT "item_winner_matches_wonat" CHECK'
+  'CREATE UNIQUE INDEX "job_label_ci" ON "Job" (lower(normalize("label", NFC)))'
 )
 ls "$dir"/*_raw_constraints/migration.sql >/dev/null
 status=0
 for s in "${expected[@]}"; do
-  if ! grep -rqF -- "$s" "$dir"/*_raw_constraints/migration.sql; then
+  if ! grep -qF -- "$s" "$dir"/*/migration.sql; then
     echo "MISSING raw statement: $s" >&2
     status=1
   fi

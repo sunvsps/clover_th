@@ -142,13 +142,16 @@ export default async function memberRoutes(app: FastifyInstance) {
       schema: { tags: ['members'], params: idParam, response: { 200: adminItem } },
       onRequest: [requireAdmin],
     },
-    async (req) =>
-      app.tx(async (tx) => {
+    async (req) => {
+      // An admin can never deactivate themselves (the bot is a separate actor and is not restricted).
+      if (req.params.id === req.auth!.memberId) throw errors.cannotDeactivateSelf();
+      return app.tx(async (tx) => {
         if (!(await tx.member.findUnique({ where: { id: req.params.id }, select: { id: true } })))
           throw errors.memberNotFound();
         await deactivateMember(tx, req.params.id, { type: 'MEMBER', id: req.auth!.memberId }, req.id);
         return toAdmin(await tx.member.findUniqueOrThrow({ where: { id: req.params.id } }));
-      }),
+      });
+    },
   );
 
   // Reactivation re-checks IGN uniqueness (the unique index fires; mapped to DUPLICATE_IGN).

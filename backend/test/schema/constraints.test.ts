@@ -155,6 +155,12 @@ describe('activity / room / job constraints', () => {
     ).resolves.toBeTruthy();
   });
 
+  it('job labels are unique case-insensitively at the DB level', async () => {
+    const err = await p.job.create({ data: { id: 98, label: 'KNIGHT', color: '#000' } }).catch((e) => e);
+    expect(err).toMatchObject({ code: 'P2002', meta: { modelName: 'Job' } });
+    await expect(p.job.create({ data: { id: 99, label: 'Bard', color: '#000' } })).resolves.toBeTruthy();
+  });
+
   it('a job in use cannot be deleted; an unused one can', async () => {
     await member('InUse');
     const err = await p.job.delete({ where: { id: 1 } }).catch((e) => e);

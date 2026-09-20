@@ -111,6 +111,42 @@ describe('WP4 deactivation', () => {
   });
 });
 
+describe('admin cannot deactivate themselves', () => {
+  it('rejects self-deactivation with CANNOT_DEACTIVATE_SELF (409) and changes nothing', async () => {
+    const admin = await w.signIn({ admin: true });
+    const r = await w.app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/members/${admin.id}/deactivate`,
+      headers: admin.h,
+    });
+    expect(r.statusCode).toBe(409);
+    expect(r.json().error.code).toBe('CANNOT_DEACTIVATE_SELF');
+    expect((await w.db.prisma.member.findUniqueOrThrow({ where: { id: admin.id } })).isActive).toBe(true);
+    expect(await w.db.prisma.auditLog.count({ where: { action: 'member.deactivate' } })).toBe(0);
+    expect((await w.app.inject({ url: '/api/v1/me', headers: { cookie: admin.cookie } })).statusCode).toBe(
+      200,
+    );
+  });
+
+  it('an admin can still deactivate another admin, and the bot can deactivate any member including an admin', async () => {
+    const admin = await w.signIn({ admin: true });
+    const other = await w.member('OtherAdmin', { isAdmin: true });
+    const r = await w.app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/members/${other.id}/deactivate`,
+      headers: admin.h,
+    });
+    expect(r.statusCode).toBe(200);
+    const viaBot = await w.app.inject({
+      method: 'POST',
+      url: `/api/v1/bot/members/${admin.discordId}/deactivate`,
+      headers: K,
+    });
+    expect(viaBot.statusCode).toBe(200);
+    expect((await w.db.prisma.member.findUniqueOrThrow({ where: { id: admin.id } })).isActive).toBe(false);
+  });
+});
+
 describe('WP4 audit log', () => {
   it('admins can read it with filters and cursor paging; newest first', async () => {
     const admin = await w.signIn({ admin: true });

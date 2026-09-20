@@ -62,7 +62,8 @@ export default async function jobRoutes(app: FastifyInstance) {
     },
     async (req) => {
       const wanted = req.body.jobs;
-      const labels = wanted.map((j) => j.label);
+      // Case-insensitive (and NFC) uniqueness, like IGNs; the job_label_ci index is the final guard.
+      const labels = wanted.map((j) => j.label.normalize('NFC').toLowerCase());
       if (new Set(labels).size !== labels.length)
         throw new AppError('DUPLICATE_JOB_LABEL', 409, 'Duplicate job label');
       const ids = wanted.flatMap((j) => (j.id !== undefined ? [j.id] : []));

@@ -82,4 +82,57 @@ describe('WP4 jobs', () => {
     expect((await put(admin.h, [{ label: 'X', color: 'red' }])).statusCode).toBe(422);
     expect((await put(admin.h, [{ id: 999, label: 'X', color: '#000000' }])).statusCode).toBe(404);
   });
+
+  it('labels are unique case-insensitively and NFC-insensitively: DUPLICATE_JOB_LABEL', async () => {
+    const admin = await w.signIn({ admin: true });
+    const cur = (await list(admin.h)).map((j: { id: number; label: string; color: string }) => ({
+      id: j.id,
+      label: j.label,
+      color: j.color,
+    }));
+    const dup = await put(admin.h, [...cur, { label: 'knight', color: '#000000' }]);
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error.code).toBe('DUPLICATE_JOB_LABEL');
+    const composed = String.fromCharCode(0xe9);
+    const decomposed = String.fromCharCode(0x65, 0x301);
+    const nfc = await put(admin.h, [
+      ...cur,
+      { label: 'Caf' + composed, color: '#000000' },
+      { label: 'caf' + decomposed, color: '#000000' },
+    ]);
+    expect(nfc.json().error.code).toBe('DUPLICATE_JOB_LABEL');
+    expect(await list(admin.h)).toHaveLength(8); // nothing changed
+  });
+
+  it('a case-only rename and a label swap still work', async () => {
+    const admin = await w.signIn({ admin: true });
+    const cur = (await list(admin.h)).map((j: { id: number; label: string; color: string }) => ({
+      id: j.id,
+      label: j.label,
+      color: j.color,
+    }));
+    const renamed = await put(
+      admin.h,
+      cur.map((j: { id: number; label: string; color: string }) =>
+        j.id === 2 ? { ...j, label: 'KNIGHT' } : j,
+      ),
+    );
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().find((j: { id: number }) => j.id === 2).label).toBe('KNIGHT');
+    const [a, b] = [renamed.json()[0], renamed.json()[1]];
+    const rest = renamed
+      .json()
+      .slice(2)
+      .map((j: { id: number; label: string; color: string }) => ({
+        id: j.id,
+        label: j.label,
+        color: j.color,
+      }));
+    const swap = await put(admin.h, [
+      { id: a.id, label: b.label.toLowerCase(), color: a.color },
+      { id: b.id, label: a.label.toUpperCase(), color: b.color },
+      ...rest,
+    ]);
+    expect(swap.statusCode).toBe(200);
+  });
 });
