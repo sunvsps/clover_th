@@ -2637,6 +2637,1324 @@
           }
         }
       }
+    },
+    "/api/v1/admin/auctions/rounds": {
+      "post": {
+        "tags": [
+          "auctions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "LIVE_CLAIM"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "durationSec": {
+                    "default": 300,
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 86400
+                  },
+                  "winCap": {
+                    "default": 5,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "startDelaySec": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60
+                  },
+                  "items": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "maxLength": 400
+                        },
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "PET",
+                            "MATERIAL",
+                            "GEMBOX",
+                            "GEAR",
+                            "CARD",
+                            "RELIC"
+                          ]
+                        },
+                        "rarity": {
+                          "nullable": true,
+                          "type": "string",
+                          "maxLength": 128
+                        },
+                        "imageUrl": {
+                          "nullable": true,
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "category"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/auctions/rounds/{id}": {
+      "patch": {
+        "tags": [
+          "auctions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  "durationSec": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 86400
+                  },
+                  "winCap": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "startDelaySec": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60
+                  },
+                  "items": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "maxLength": 400
+                        },
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "PET",
+                            "MATERIAL",
+                            "GEMBOX",
+                            "GEAR",
+                            "CARD",
+                            "RELIC"
+                          ]
+                        },
+                        "rarity": {
+                          "nullable": true,
+                          "type": "string",
+                          "maxLength": 128
+                        },
+                        "imageUrl": {
+                          "nullable": true,
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "category"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/auctions/rounds/{id}/start": {
+      "post": {
+        "tags": [
+          "auctions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "startDelaySec": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60
+                  },
+                  "durationSec": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 86400
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/auctions/rounds/{id}/close": {
+      "post": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/auctions/rounds/{id}/cancel": {
+      "post": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/rounds": {
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "OPEN",
+                "CLOSED",
+                "CANCELLED"
+              ]
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "serverTime": {
+                      "type": "string"
+                    },
+                    "rounds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "number"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "LIVE_CLAIM",
+                              "QUEUE_RANKED"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "OPEN",
+                              "CLOSED",
+                              "CANCELLED"
+                            ]
+                          },
+                          "durationSec": {
+                            "type": "number"
+                          },
+                          "winCap": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "startDelaySec": {
+                            "type": "number"
+                          },
+                          "opensAt": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "closesAt": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "itemCount": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "name",
+                          "status",
+                          "durationSec",
+                          "winCap",
+                          "startDelaySec",
+                          "opensAt",
+                          "closesAt",
+                          "itemCount"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "serverTime",
+                    "rounds"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/rounds/{id}": {
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "serverTime": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "number"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "PET",
+                              "MATERIAL",
+                              "GEMBOX",
+                              "GEAR",
+                              "CARD",
+                              "RELIC"
+                            ]
+                          },
+                          "rarity": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "imageUrl": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "winner": {
+                            "nullable": true,
+                            "type": "object",
+                            "properties": {
+                              "memberId": {
+                                "type": "string"
+                              },
+                              "wonAt": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "memberId",
+                              "wonAt"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "category",
+                          "rarity",
+                          "imageUrl",
+                          "winner"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "myWinCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt",
+                    "serverTime",
+                    "items",
+                    "myWinCount"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/rounds/{id}/items/{itemId}/claim": {
+      "post": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "itemId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "number"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "PET",
+                            "MATERIAL",
+                            "GEMBOX",
+                            "GEAR",
+                            "CARD",
+                            "RELIC"
+                          ]
+                        },
+                        "rarity": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "imageUrl": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "winner": {
+                          "nullable": true,
+                          "type": "object",
+                          "properties": {
+                            "memberId": {
+                              "type": "string"
+                            },
+                            "wonAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "memberId",
+                            "wonAt"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "category",
+                        "rarity",
+                        "imageUrl",
+                        "winner"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "myWinCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "myWinCount"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "itemId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "number"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "PET",
+                            "MATERIAL",
+                            "GEMBOX",
+                            "GEAR",
+                            "CARD",
+                            "RELIC"
+                          ]
+                        },
+                        "rarity": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "imageUrl": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "winner": {
+                          "nullable": true,
+                          "type": "object",
+                          "properties": {
+                            "memberId": {
+                              "type": "string"
+                            },
+                            "wonAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "memberId",
+                            "wonAt"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "category",
+                        "rarity",
+                        "imageUrl",
+                        "winner"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "myWinCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "myWinCount"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/rounds/{id}/results": {
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roundId": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "CLOSED"
+                      ]
+                    },
+                    "closedAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "serverTime": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "number"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "PET",
+                              "MATERIAL",
+                              "GEMBOX",
+                              "GEAR",
+                              "CARD",
+                              "RELIC"
+                            ]
+                          },
+                          "rarity": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "imageUrl": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "winner": {
+                            "nullable": true,
+                            "type": "object",
+                            "properties": {
+                              "memberId": {
+                                "type": "string"
+                              },
+                              "wonAt": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "memberId",
+                              "wonAt"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "category",
+                          "rarity",
+                          "imageUrl",
+                          "winner"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "leftoverRoundId": {
+                      "nullable": true,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "roundId",
+                    "status",
+                    "closedAt",
+                    "serverTime",
+                    "items",
+                    "leftoverRoundId"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/rounds/{id}/results/me": {
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roundId": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "serverTime": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "number"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "PET",
+                              "MATERIAL",
+                              "GEMBOX",
+                              "GEAR",
+                              "CARD",
+                              "RELIC"
+                            ]
+                          },
+                          "rarity": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "imageUrl": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "winner": {
+                            "nullable": true,
+                            "type": "object",
+                            "properties": {
+                              "memberId": {
+                                "type": "string"
+                              },
+                              "wonAt": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "memberId",
+                              "wonAt"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "category",
+                          "rarity",
+                          "imageUrl",
+                          "winner"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "myWinCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "roundId",
+                    "status",
+                    "serverTime",
+                    "items",
+                    "myWinCount"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

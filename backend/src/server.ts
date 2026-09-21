@@ -1,5 +1,6 @@
 import { buildApp } from './app.js';
 import { EnvError, loadEnv } from './config/env.js';
+import { createSweeper } from './modules/auctions/sweeper.js';
 import { createProvider } from './modules/notifications/providers/index.js';
 import { createWorker } from './modules/notifications/worker.js';
 
@@ -15,6 +16,9 @@ async function main() {
     throw err;
   }
   const app = await buildApp({ env });
+  const sweeper = createSweeper({ prisma: app.prisma, tx: app.tx, log: app.log });
+  sweeper.start();
+  app.addHook('onClose', () => sweeper.stop());
   const provider = createProvider(env);
   if (provider) {
     const worker = createWorker({ prisma: app.prisma, provider, log: app.log });

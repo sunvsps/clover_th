@@ -1436,6 +1436,608 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/auctions/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        type: "LIVE_CLAIM";
+                        name: string;
+                        /** @default 300 */
+                        durationSec?: number;
+                        /** @default 5 */
+                        winCap?: number;
+                        /** @default 3 */
+                        startDelaySec?: number;
+                        items?: {
+                            name: string;
+                            /** @enum {string} */
+                            category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                            rarity?: string | null;
+                            imageUrl?: string | null;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auctions/rounds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        durationSec?: number;
+                        winCap?: number;
+                        startDelaySec?: number;
+                        items?: {
+                            name: string;
+                            /** @enum {string} */
+                            category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                            rarity?: string | null;
+                            imageUrl?: string | null;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/admin/auctions/rounds/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        startDelaySec?: number;
+                        durationSec?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auctions/rounds/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auctions/rounds/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    status?: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            serverTime: string;
+                            rounds: {
+                                id: number;
+                                /** @enum {string} */
+                                type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                                name: string;
+                                /** @enum {string} */
+                                status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                                durationSec: number;
+                                winCap: number | null;
+                                startDelaySec: number;
+                                opensAt: string | null;
+                                closesAt: string | null;
+                                itemCount: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/rounds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                            serverTime: string;
+                            items: {
+                                id: number;
+                                name: string;
+                                /** @enum {string} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                rarity: string | null;
+                                imageUrl: string | null;
+                                winner: {
+                                    memberId: string;
+                                    wonAt: string;
+                                } | null;
+                            }[];
+                            myWinCount: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/rounds/{id}/items/{itemId}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                    itemId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            item: {
+                                id: number;
+                                name: string;
+                                /** @enum {string} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                rarity: string | null;
+                                imageUrl: string | null;
+                                winner: {
+                                    memberId: string;
+                                    wonAt: string;
+                                } | null;
+                            };
+                            myWinCount: number;
+                        };
+                    };
+                };
+            };
+        };
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                    itemId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            item: {
+                                id: number;
+                                name: string;
+                                /** @enum {string} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                rarity: string | null;
+                                imageUrl: string | null;
+                                winner: {
+                                    memberId: string;
+                                    wonAt: string;
+                                } | null;
+                            };
+                            myWinCount: number;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/rounds/{id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            roundId: number;
+                            /** @enum {string} */
+                            status: "CLOSED";
+                            closedAt: string | null;
+                            serverTime: string;
+                            items: {
+                                id: number;
+                                name: string;
+                                /** @enum {string} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                rarity: string | null;
+                                imageUrl: string | null;
+                                winner: {
+                                    memberId: string;
+                                    wonAt: string;
+                                } | null;
+                            }[];
+                            leftoverRoundId: number | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/rounds/{id}/results/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            roundId: number;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            serverTime: string;
+                            items: {
+                                id: number;
+                                name: string;
+                                /** @enum {string} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                rarity: string | null;
+                                imageUrl: string | null;
+                                winner: {
+                                    memberId: string;
+                                    wonAt: string;
+                                } | null;
+                            }[];
+                            myWinCount: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {

@@ -4,7 +4,7 @@
  * GLOBAL LOCK ORDER (always acquire in this order, never the reverse):
  *   1. Activity row(s)            (withActivityLock / lockActivities; several activities in ascending id order)
  *   2. AuctionRound row           (withRoundLock)
- *   3. category / member advisory locks, sorted  (categoryLocks, added with the auction packages)
+ *   3. category / member advisory locks, sorted  (memberClaimLock; categoryLocks arrives with type 2)
  *   4. ordinary rows
  *
  * The Activity row always exists, so lazily created Occurrence rows cannot escape it. Occurrence is a
@@ -38,4 +38,12 @@ export async function withRoundLock(tx: Tx, roundId: number, mode: 'SHARE' | 'UP
       ? await tx.$queryRaw<{ id: number }[]>`SELECT id FROM "AuctionRound" WHERE id = ${roundId} FOR SHARE`
       : await tx.$queryRaw<{ id: number }[]>`SELECT id FROM "AuctionRound" WHERE id = ${roundId} FOR UPDATE`;
   if (rows.length === 0) throw new AppError('NOT_FOUND', 404, 'Round not found');
+}
+
+/**
+ * Serializes one member's claims in one round so two tabs cannot exceed the cap (taken AFTER the round lock,
+ * per the global order). Released automatically at commit/rollback.
+ */
+export async function memberClaimLock(tx: Tx, roundId: number, memberId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`claim:${roundId}:${memberId}`}, 0))`;
 }

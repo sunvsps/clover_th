@@ -35,6 +35,8 @@ const schema = z
       )
       .refine((a) => a.length >= 1 && a.length <= 2, 'must hold one or two digests')
       .refine((a) => a.every((d) => digest.test(d)), 'each entry must be a sha256 hex digest (64 hex chars)'),
+    /** Claim/release rate limit per member per second (design 9: 5). Tests raise it to exercise the cap. */
+    CLAIM_RATE_MAX: z.coerce.number().int().min(1).max(100000).default(5),
     TRUST_PROXY: z
       .enum(['true', 'false'])
       .default('false')

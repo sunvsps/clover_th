@@ -14,6 +14,7 @@ import type { Writable } from 'node:stream';
 import type { Env } from './config/env.js';
 import { createTx } from './lib/tx.js';
 import activityRoutes from './modules/activities/routes.js';
+import auctionRoutes from './modules/auctions/routes.js';
 import auditRoutes from './modules/audit/routes.js';
 import authRoutes from './modules/auth/routes.js';
 import botRoutes from './modules/bot/routes.js';
@@ -107,6 +108,7 @@ export async function buildApp(opts: BuildOptions) {
   await app.register(activityRoutes);
   await app.register(registrationRoutes);
   await app.register(plannerRoutes);
+  await app.register(auctionRoutes);
 
   return app;
 }
