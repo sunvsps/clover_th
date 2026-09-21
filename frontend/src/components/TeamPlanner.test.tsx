@@ -34,7 +34,7 @@ function setup(me: Me, layout: FakeLayout, registered: string[] = [], opts: { au
   const notify = vi.fn();
   const user = userEvent.setup({ delay: null });
   const view = render(
-    <TeamPlanner isThai={opts.isThai ?? false} isAdmin={me.isAdmin} jobs={jobs} members={members} events={events} activities={activities} onSaveJobs={() => true} onNotice={notify} />,
+    <TeamPlanner isThai={opts.isThai ?? false} isAdmin={me.isAdmin} jobs={jobs} members={members} events={events} activities={activities} onSaveJobs={async () => null} onNotice={notify} />,
   );
   return { fake, notify, user, view };
 }

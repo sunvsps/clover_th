@@ -13,7 +13,7 @@ import Workspace from "./views/Workspace";
 function App() {
   const { notice, setNotice, clearNotice } = useNotice();
   const { isThai, toggleLanguage } = useLanguage();
-  const session = useSession({ notify: setNotice });
+  const session = useSession();
   const guildData = useGuildData(session.isAuthenticated);
   const signedIn = session.state.status === "ready";
 
@@ -31,7 +31,7 @@ function App() {
         />
       ) : (
         <>
-          <TopBar session={session} isThai={isThai} onToggleLanguage={toggleLanguage} onSwitchToUser={() => {}} />
+          <TopBar session={session} isThai={isThai} onToggleLanguage={toggleLanguage} />
           {signedIn ? (
             <section className="auth-screen" role={guildData.state.status === "error" ? "alert" : "status"}>
               {guildData.state.status === "error" ? (

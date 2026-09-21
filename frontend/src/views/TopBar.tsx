@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { ChevronDown, Crown, Hash, LogOut } from "lucide-react";
 import type { Session } from "../hooks/useSession";
 
@@ -6,13 +5,10 @@ type Props = {
   session: Session;
   isThai: boolean;
   onToggleLanguage: () => void;
-  /** called when an admin chooses "Switch to USER view" (the app also closes admin-only panels) */
-  onSwitchToUser: () => void;
 };
 
-/** The auth/session shell: brand, language toggle, sign-in / sign-out and the admin role menu. */
-export default function TopBar({ session, isThai, onToggleLanguage, onSwitchToUser }: Props) {
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+/** The auth/session shell: brand, language toggle, sign-in / sign-out and the ADMIN / USER badge. */
+export default function TopBar({ session, isThai, onToggleLanguage }: Props) {
   const { isAuthenticated, userName, isAdmin } = session;
 
   return (
@@ -37,30 +33,7 @@ export default function TopBar({ session, isThai, onToggleLanguage, onSwitchToUs
               <span className="avatar">{userName.charAt(0)}</span>
               <span>{userName}</span>
               {isAdmin ? (
-                <div className="role-menu-wrap">
-                  <button
-                    className="top-admin-badge"
-                    type="button"
-                    onClick={() => setRoleMenuOpen((open) => !open)}
-                  >
-                    ADMIN <ChevronDown size={11} />
-                  </button>
-                  {roleMenuOpen && (
-                    <div className="role-menu">
-                      <strong>Current role</strong>
-                      <span>Administrator</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRoleMenuOpen(false);
-                          onSwitchToUser();
-                        }}
-                      >
-                        Switch to USER view
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <span className="top-admin-badge">ADMIN</span>
               ) : (
                 <span className="top-user-badge">USER</span>
               )}

@@ -1,10 +1,11 @@
-import { CalendarDays, Check, Package, Users, X } from "lucide-react";
-import type { GuildData } from "../api";
+import { CalendarDays, Check, Package, Shield, Users, X } from "lucide-react";
+import { getMembers, type GuildData } from "../api";
 import WeeklySchedule from "../components/WeeklySchedule";
 import TeamPlanner from "../components/TeamPlanner";
 import { useGuildState } from "../hooks/useGuildState";
 import { useHashView } from "../hooks/useHashView";
 import type { Session } from "../hooks/useSession";
+import AdminView from "./AdminView";
 import AuctionView from "./AuctionView";
 import TopBar from "./TopBar";
 
@@ -23,11 +24,13 @@ type Props = {
  * and the auctions (WP14) use the API. Still local mock state: only the job edits (WP15).
  */
 export default function Workspace({ session, data, isThai, onToggleLanguage, notice, notify, clearNotice }: Props) {
-  const { activeView, setActiveView } = useHashView();
+  const { activeView: requestedView, setActiveView } = useHashView();
+  // the admin page exists only for admins (the server also enforces it on every call)
+  const activeView = requestedView === "admin" && !session.isAdmin ? "auction" : requestedView;
   const guild = useGuildState({
     initialMembers: data.members,
     initialJobs: data.jobs,
-    isAdmin: session.isAdmin,
+    initialActivities: data.activities,
     isThai,
     notify,
   });
@@ -38,9 +41,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         session={session}
         isThai={isThai}
         onToggleLanguage={onToggleLanguage}
-        onSwitchToUser={() => {
-          session.switchToUser();
-        }}
       />
 
       <nav className="feature-nav" aria-label="Guild tools">
@@ -53,6 +53,11 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         <button className={activeView === "teams" ? "active" : ""} type="button" onClick={() => setActiveView("teams")}>
           <Users size={15} /> {isThai ? "จัดทีมกิลด์" : "Team planner"}
         </button>
+        {session.isAdmin && (
+          <button className={activeView === "admin" ? "active" : ""} type="button" onClick={() => setActiveView("admin")}>
+            <Shield size={15} /> {isThai ? "แอดมิน" : "Admin"}
+          </button>
+        )}
       </nav>
 
       <AuctionView
@@ -73,7 +78,7 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
             jobs={guild.jobs}
             members={guild.members}
             events={data.events}
-            activities={data.activities}
+            activities={guild.activities}
             onNotice={notify}
           />
         </div>
@@ -86,9 +91,23 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
             jobs={guild.jobs}
             members={guild.members}
             events={data.events}
-            activities={data.activities}
+            activities={guild.activities}
             onSaveJobs={guild.saveJobs}
             onNotice={notify}
+          />
+        </div>
+      )}
+      {activeView === "admin" && session.isAdmin && (
+        <div className="feature-content wide">
+          <AdminView
+            isThai={isThai}
+            jobs={guild.jobs}
+            members={guild.members}
+            activities={guild.activities}
+            onSaveJobs={guild.saveJobs}
+            onMembersChanged={() => void getMembers().then(guild.setMembers, () => {})}
+            onActivityChanged={guild.updateActivity}
+            notify={notify}
           />
         </div>
       )}

@@ -19,13 +19,13 @@ describe("sign-in and /me", () => {
     render(<App />);
     expect(await screen.findByText("Bo")).toBeInTheDocument();
     expect(screen.getByText("USER")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /ADMIN/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("ADMIN")).not.toBeInTheDocument();
   });
 
   it("an admin from /me gets the admin badge", async () => {
     mockApi({ me: meAdmin });
     render(<App />);
-    expect(await screen.findByRole("button", { name: /ADMIN/ })).toBeInTheDocument();
+    expect(await screen.findByText("ADMIN")).toBeInTheDocument();
   });
 
   it("without a session the sign-in screen appears and the button goes to the Discord login", async () => {

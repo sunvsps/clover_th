@@ -17,7 +17,7 @@ import { addDays, formatDay, startOfWeek, todayKey } from "../lib/bangkok";
 import { findJob, jobStyle, weekDayNames, type GuildMember, type Job, type ScheduleEvent } from "../data/guild";
 import JobChartCard from "./JobChartCard";
 import JobManagerDialog from "./JobManagerDialog";
-import { useJobManager } from "../hooks/useJobManager";
+import { useJobManager, type JobDraftEntry } from "../hooks/useJobManager";
 import { assignmentsOf, backfillText, flagText, planChangeNotices, planToText } from "./plannerModel";
 
 type Props = {
@@ -27,8 +27,8 @@ type Props = {
   members: GuildMember[];
   events: ScheduleEvent[];
   activities: WireActivity[];
-  /** job list edits are still local until WP15 */
-  onSaveJobs: (next: Job[]) => boolean;
+  /** saves the job list (PUT /admin/jobs); returns an error text or null */
+  onSaveJobs: (next: JobDraftEntry[]) => Promise<string | null>;
   onNotice: (message: string) => void;
 };
 

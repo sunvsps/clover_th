@@ -14,7 +14,6 @@ function fakeSession(over: Partial<Session> = {}): Session {
     isAdmin: false,
     signIn: vi.fn(),
     signOut: vi.fn(),
-    switchToUser: vi.fn(),
     retry: vi.fn(),
     dismissAuthError: vi.fn(),
     ...over,
@@ -25,10 +24,9 @@ const signedIn = (over: Partial<Session> = {}) =>
   fakeSession({ isAuthenticated: true, memberId: "m-aria", userName: "Aria", ign: "Aria", ...over });
 
 function setup(session: Session, isThai = false) {
-  const onSwitchToUser = vi.fn();
   const onToggleLanguage = vi.fn();
-  render(<TopBar session={session} isThai={isThai} onToggleLanguage={onToggleLanguage} onSwitchToUser={onSwitchToUser} />);
-  return { onSwitchToUser, onToggleLanguage };
+  render(<TopBar session={session} isThai={isThai} onToggleLanguage={onToggleLanguage} />);
+  return { onToggleLanguage };
 }
 
 describe("TopBar (auth/session shell)", () => {
@@ -45,7 +43,7 @@ describe("TopBar (auth/session shell)", () => {
     const session = signedIn({ isAdmin: true });
     setup(session);
     expect(screen.getByText("Aria")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /ADMIN/ })).toBeInTheDocument();
+    expect(screen.getByText("ADMIN")).toBeInTheDocument();
     await userEvent.setup().click(screen.getByTitle("Sign out"));
     expect(session.signOut).toHaveBeenCalledTimes(1);
   });
@@ -56,14 +54,11 @@ describe("TopBar (auth/session shell)", () => {
     expect(screen.queryByRole("button", { name: /ADMIN/ })).not.toBeInTheDocument();
   });
 
-  it("the role menu asks to switch an admin to the USER view and closes", async () => {
-    const user = userEvent.setup();
-    const t = setup(signedIn({ isAdmin: true }));
-    await user.click(screen.getByRole("button", { name: /ADMIN/ }));
-    expect(screen.getByText("Current role")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Switch to USER view" }));
-    expect(t.onSwitchToUser).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("Current role")).not.toBeInTheDocument();
+  it("an admin sees a plain ADMIN badge: no menu that pretends to change permissions", () => {
+    setup(signedIn({ isAdmin: true }));
+    expect(screen.getByText("ADMIN")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ADMIN/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Switch to USER/)).not.toBeInTheDocument();
   });
 
   it("the language button shows the other language and calls back", async () => {

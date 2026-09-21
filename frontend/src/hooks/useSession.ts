@@ -14,8 +14,6 @@ export type SessionState =
   | { status: "error"; error: ApiError | null }
   | { status: "ready"; me: Me };
 
-type Options = { notify: (message: string) => void };
-
 /** Reads and removes `?authError=` from the address bar (a reload must not show the error again). */
 function takeAuthError(): AuthErrorCode | null {
   const params = new URLSearchParams(window.location.search);
@@ -32,12 +30,11 @@ function takeAuthError(): AuthErrorCode | null {
  * sees it), `?authError=` after a failed Discord login, sign-out via the API, and a 401 anywhere means the session
  * expired. Nothing about the user is hardcoded here.
  */
-export function useSession({ notify }: Options) {
+export function useSession() {
   const [state, setState] = useState<SessionState>(() => {
     const code = takeAuthError();
     return code ? { status: "authError", code } : { status: "loading" };
   });
-  const [viewAsUser, setViewAsUser] = useState(false);
   const wasReady = useRef(false);
 
   const fetchMe = useCallback(async (): Promise<SessionState> => {
@@ -78,13 +75,7 @@ export function useSession({ notify }: Options) {
     } catch {
       /* the cookie may already be gone; either way the user is signed out from the app's point of view */
     }
-    setViewAsUser(false);
     setState({ status: "signedOut" });
-  }
-
-  function switchToUser() {
-    setViewAsUser(true);
-    notify("Switched to User view.");
   }
 
   return {
@@ -93,11 +84,10 @@ export function useSession({ notify }: Options) {
     memberId: me?.memberId ?? "",
     userName: me?.ign ?? "",
     ign: me?.ign ?? "",
-    /** the server says admin; "Switch to USER view" is only a local, cosmetic downgrade */
-    isAdmin: (me?.isAdmin ?? false) && !viewAsUser,
+    /** what the server says: `GET /me` */
+    isAdmin: me?.isAdmin ?? false,
     signIn,
     signOut,
-    switchToUser,
     /** leave the auth-error screen and look for a session again */
     retry: async () => {
       setState({ status: "loading" });

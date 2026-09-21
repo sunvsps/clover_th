@@ -16,7 +16,7 @@ describe("App shell", () => {
     await renderApp();
     expect(screen.getByLabelText("Clover TH home")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Guild tools" });
-    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Schedule", "Team planner"]);
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Schedule", "Team planner", "Admin"]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guild item auction");
     expect(await screen.findByText(/no auction round yet/i)).toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe("App shell", () => {
   it("shows the profile from /me in the shell", async () => {
     await renderApp();
     expect(screen.getByText("Aria")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /ADMIN/ })).toBeInTheDocument();
+    expect(screen.getByText("ADMIN")).toBeInTheDocument();
   });
 
   it("signing out returns to the sign-in screen", async () => {

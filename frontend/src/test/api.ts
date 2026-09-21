@@ -426,3 +426,146 @@ export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () 
     rateLimitNext: () => { rateLimitNext = true; },
   };
 }
+
+type FAMember = { id: string; ign: string; nickname: string | null; jobId: number; discordId: string; isActive: boolean; isAdmin: boolean; isIncomplete: boolean };
+type FARound = { id: number; type: "LIVE_CLAIM" | "QUEUE_RANKED"; name: string; status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED"; durationSec: number; winCap: number | null; startDelaySec: number; items: { id: number; name: string; category: string; rarity: string | null; imageUrl: string | null }[]; leftoverRoundId?: number };
+
+/**
+ * Stand-in for the admin API (members, jobs, activities, layout, notifications, audit log, round management).
+ * Every route answers 403 ADMIN_REQUIRED unless `me.isAdmin`, like the server.
+ */
+export function fakeAdmin(opts: { me: Me; rounds?: FARound[]; notifications?: { id: number; status: "PENDING" | "SENDING" | "SENT" | "DEAD"; eventType?: string }[]; audit?: { id: number; action: string; actorId?: string }[]; layoutViolation?: { teamId: number; placed: number; size: number }[]; duplicateLabel?: string }) {
+  const calls: { method: string; path: string; body?: unknown; query?: Record<string, string> }[] = [];
+  const members: FAMember[] = wireMembers.map((m, i) => ({ id: m.id, ign: m.ign, nickname: m.nickname, jobId: m.jobId, discordId: String(900000000000000000n + BigInt(i)), isActive: true, isAdmin: m.id === opts.me.memberId && opts.me.isAdmin, isIncomplete: i === 3 }));
+  let jobs = wireJobs.map((j) => ({ ...j }));
+  const rounds = [...(opts.rounds ?? [])];
+  let nextRoundId = 100;
+  const notifications = (opts.notifications ?? []).map((n) => ({ eventType: "activity.promoted", target: "DISCORD_DM", attempts: n.status === "DEAD" ? 5 : 0, maxAttempts: 5, nextAttemptAt: "2026-09-21T00:00:00Z", lastError: n.status === "DEAD" ? "Cannot send messages to this user" : null, lastErrorCode: n.status === "DEAD" ? "50007" : null, sentAt: null, createdAt: "2026-09-21T03:00:00Z", entityType: null, entityId: null, payload: {}, ...n }));
+  const audit = (opts.audit ?? []).map((a) => ({ at: "2026-09-21T03:30:00Z", actorType: "MEMBER", actorId: a.actorId ?? opts.me.memberId, entityType: "occurrence", entityId: "1", meta: { note: "x" }, requestId: null, ...a }));
+  const forbid = () => HttpResponse.json({ error: { code: "ADMIN_REQUIRED", message: "x", details: {} } }, { status: 403 });
+  const err = (code: string, status: number, details: Record<string, unknown> = {}) => HttpResponse.json({ error: { code, message: code, details } }, { status });
+  const admin = <T,>(fn: (ctx: { request: Request; params: Record<string, string | readonly string[] | undefined> }) => T | Promise<T>) => async (ctx: { request: Request; params: Record<string, string | readonly string[] | undefined> }) => {
+    const url = new URL(ctx.request.url);
+    const body = ctx.request.method === "GET" || ctx.request.method === "DELETE" ? undefined : await ctx.request.clone().json().catch(() => undefined);
+    calls.push({ method: ctx.request.method, path: url.pathname, body, query: Object.fromEntries(url.searchParams) });
+    if (!opts.me.isAdmin) return forbid();
+    return fn(ctx);
+  };
+  const wireRound = (r: FARound) => ({ id: r.id, type: r.type, name: r.name, status: r.status, durationSec: r.durationSec, winCap: r.winCap, startDelaySec: r.startDelaySec, opensAt: null, closesAt: null });
+  let layout = { activityId: "guild-league", rooms: [{ id: 1, key: "main", name: "Main", sortOrder: 0, capacity: 10, teams: [{ id: 11, name: "Main 1", size: 5, sortOrder: 0 }, { id: 12, name: "Main 2", size: 5, sortOrder: 1 }] }] };
+  const activities = wireActivitiesAdmin();
+
+  server.use(
+    http.get("*/api/v1/admin/members", admin(({ request }) => {
+      const q = new URL(request.url).searchParams;
+      return HttpResponse.json(members.filter((m) => (q.get("includeInactive") === "1" || m.isActive) && (q.get("incomplete") !== "1" || m.isIncomplete)));
+    })),
+    http.patch("*/api/v1/admin/members/:id", admin(({ params }) => {
+      const m = members.find((x) => x.id === params.id)!;
+      const last = calls.at(-1)!.body as { ign?: string; nickname?: string | null; jobId?: number };
+      if (last.ign && members.some((x) => x.id !== m.id && x.ign.toLowerCase() === last.ign!.toLowerCase())) return err("DUPLICATE_IGN", 409);
+      Object.assign(m, { ...(last.ign ? { ign: last.ign } : {}), ...(last.nickname !== undefined ? { nickname: last.nickname } : {}), ...(last.jobId ? { jobId: last.jobId } : {}) });
+      return HttpResponse.json(m);
+    })),
+    http.post("*/api/v1/admin/members/:id/deactivate", admin(({ params }) => {
+      if (params.id === opts.me.memberId) return err("CANNOT_DEACTIVATE_SELF", 409);
+      const m = members.find((x) => x.id === params.id)!;
+      m.isActive = false;
+      return HttpResponse.json(m);
+    })),
+    http.post("*/api/v1/admin/members/:id/reactivate", admin(({ params }) => {
+      const m = members.find((x) => x.id === params.id)!;
+      m.isActive = true;
+      return HttpResponse.json(m);
+    })),
+    http.put("*/api/v1/admin/jobs", admin(() => {
+      const body = calls.at(-1)!.body as { jobs: { id?: number; label: string; color: string; sortOrder?: number }[] };
+      if (opts.duplicateLabel && body.jobs.some((j) => j.label === opts.duplicateLabel)) return err("DUPLICATE_JOB_LABEL", 409);
+      let next = 1000;
+      jobs = body.jobs.map((j, i) => ({ id: j.id ?? next++, label: j.label, color: j.color, sortOrder: i, inUse: true }));
+      return HttpResponse.json(jobs);
+    })),
+    http.patch("*/api/v1/admin/activities/:id", admin(({ params }) => {
+      const body = calls.at(-1)!.body as { registrationCapacity?: number | null; autoBackfill?: boolean; notifyChannelId?: string | null };
+      const a = activities.find((x) => x.id === params.id)!;
+      if (body.autoBackfill && !a.hasPlanner) return err("AUTO_BACKFILL_REQUIRES_PLANNER", 422);
+      Object.assign(a, body);
+      return HttpResponse.json({ activity: a, promoted: body.registrationCapacity && body.registrationCapacity > 1 ? [{ occurrenceId: 1, memberId: "m-bo" }] : [] });
+    })),
+    http.get("*/api/v1/admin/activities/:id/layout", admin(() => HttpResponse.json(layout))),
+    http.put("*/api/v1/admin/activities/:id/layout", admin(() => {
+      const body = calls.at(-1)!.body as { rooms: typeof layout.rooms };
+      if (opts.layoutViolation) return err("LAYOUT_BELOW_PLACED", 409, { ...opts.layoutViolation[0]!, violations: opts.layoutViolation });
+      layout = { activityId: layout.activityId, rooms: body.rooms.map((r, i) => ({ id: r.id ?? 50 + i, key: r.key, name: r.name, sortOrder: i, capacity: r.teams.reduce((n, t) => n + t.size, 0), teams: r.teams.map((t, j) => ({ id: t.id ?? 500 + j, name: t.name, size: t.size, sortOrder: j })) })) };
+      return HttpResponse.json(layout);
+    })),
+    http.get("*/api/v1/admin/notifications", admin(({ request }) => {
+      const status = new URL(request.url).searchParams.get("status");
+      const rows = notifications.filter((n) => !status || n.status === status);
+      const counts = { PENDING: 0, SENDING: 0, SENT: 0, DEAD: 0 };
+      for (const n of notifications) counts[n.status]++;
+      return HttpResponse.json({ items: rows, counts, nextCursor: null });
+    })),
+    http.post("*/api/v1/admin/notifications/:id/retry", admin(({ params }) => {
+      const n = notifications.find((x) => x.id === Number(params.id))!;
+      if (n.status !== "DEAD") return err("NOTIFICATION_NOT_RETRYABLE", 409);
+      n.status = "PENDING";
+      return HttpResponse.json({ id: n.id, status: "PENDING" });
+    })),
+    http.get("*/api/v1/admin/audit-log", admin(({ request }) => {
+      const q = new URL(request.url).searchParams;
+      const rows = audit.filter((a) => (!q.get("action") || a.action === q.get("action")) && (!q.get("cursor") || a.id < Number(q.get("cursor"))));
+      const page = rows.slice(0, 2);
+      return HttpResponse.json({ items: page, nextCursor: rows.length > 2 ? page.at(-1)!.id : null });
+    })),
+    // round management
+    http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [...rounds].reverse().map((r) => ({ ...wireRound(r), itemCount: r.items.length })) })),
+    http.get("*/api/v1/auctions/rounds/:id", ({ params }) => {
+      const r = rounds.find((x) => x.id === Number(params.id))!;
+      return HttpResponse.json({ ...wireRound(r), serverTime: new Date().toISOString(), items: r.items.map((i) => ({ ...i, winner: null })), myWinCount: 0, eligibleCategories: [] });
+    }),
+    http.get("*/api/v1/auctions/rounds/:id/results", ({ params }) => {
+      const r = rounds.find((x) => x.id === Number(params.id))!;
+      return HttpResponse.json({ roundId: r.id, status: "CLOSED", closedAt: null, serverTime: new Date().toISOString(), items: [], leftoverRoundId: r.leftoverRoundId ?? null });
+    }),
+    http.post("*/api/v1/admin/auctions/rounds", admin(() => {
+      const b = calls.at(-1)!.body as { type: FARound["type"]; name: string; durationSec: number; startDelaySec: number; winCap?: number; items: { name: string; category: string; rarity: string | null; imageUrl: string | null }[] };
+      const r: FARound = { id: nextRoundId++, type: b.type, name: b.name, status: "DRAFT", durationSec: b.durationSec, startDelaySec: b.startDelaySec, winCap: b.type === "LIVE_CLAIM" ? (b.winCap ?? 5) : null, items: b.items.map((i, n) => ({ id: n + 1, ...i })) };
+      rounds.push(r);
+      return HttpResponse.json(wireRound(r), { status: 201 });
+    })),
+    http.patch("*/api/v1/admin/auctions/rounds/:id", admin(({ params }) => {
+      const r = rounds.find((x) => x.id === Number(params.id))!;
+      const { items: _ignored, ...rest } = calls.at(-1)!.body as Record<string, unknown> & { items?: unknown };
+      void _ignored;
+      Object.assign(r, rest);
+      return HttpResponse.json(wireRound(r));
+    })),
+    http.post("*/api/v1/admin/auctions/rounds/:id/start", admin(({ params }) => {
+      const r = rounds.find((x) => x.id === Number(params.id))!;
+      const other = rounds.find((x) => x.type === r.type && x.status === "OPEN" && x.id !== r.id);
+      if (other) return err("ANOTHER_ROUND_OPEN", 409, { roundId: other.id });
+      r.status = "OPEN";
+      return HttpResponse.json(wireRound(r));
+    })),
+    http.post("*/api/v1/admin/auctions/rounds/:id/close", admin(({ params }) => {
+      const r = rounds.find((x) => x.id === Number(params.id))!;
+      r.status = "CLOSED";
+      return HttpResponse.json(wireRound(r));
+    })),
+    http.post("*/api/v1/admin/auctions/rounds/:id/cancel", admin(({ params }) => {
+      const r = rounds.find((x) => x.id === Number(params.id))!;
+      r.status = "CANCELLED";
+      return HttpResponse.json(wireRound(r));
+    })),
+    http.get("*/api/v1/admin/auctions/rounds/:id/preferences", admin(() => HttpResponse.json({ roundId: 1, lists: [{ memberId: "m-bo", itemIds: [2, 1] }] }))),
+  );
+  return { calls, members, get jobs() { return jobs; }, rounds, notifications, activities };
+}
+
+function wireActivitiesAdmin() {
+  return [
+    { id: "guild-league", name: "Guild League", isGuild: true, hasPlanner: true, registrationCapacity: null as number | null, autoBackfill: false, notifyChannelId: null as string | null, layoutCapacity: 10 },
+    { id: "hazy-forest", name: "Hazy Forest", isGuild: false, hasPlanner: false, registrationCapacity: null as number | null, autoBackfill: false, notifyChannelId: null as string | null, layoutCapacity: 0 },
+  ];
+}

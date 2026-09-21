@@ -107,6 +107,11 @@ export default function JobManagerDialog({ manager, members, isThai }: Props) {
           </button>
         </form>
         <div className="editor-actions">
+          {manager.saveError && (
+            <span className="form-error" role="alert">
+              {manager.saveError}
+            </span>
+          )}
           {!manager.draftValid && (
             <span className="form-error">
               {isThai ? "ชื่ออาชีพต้องไม่ว่างและไม่ซ้ำกัน" : "Job names must be filled in and unique."}
@@ -115,7 +120,7 @@ export default function JobManagerDialog({ manager, members, isThai }: Props) {
           <button type="button" className="copy-button" onClick={manager.close}>
             {isThai ? "ยกเลิก" : "Cancel"}
           </button>
-          <button type="button" className="admin-button" disabled={!manager.draftValid} onClick={manager.save}>
+          <button type="button" className="admin-button" disabled={!manager.draftValid || manager.saving} onClick={() => void manager.save()}>
             <Check size={13} /> {isThai ? "บันทึก" : "Save"}
           </button>
         </div>
