@@ -3,6 +3,7 @@ import fp from 'fastify-plugin';
 import { hasZodFastifySchemaValidationErrors, isResponseSerializationError } from 'fastify-type-provider-zod';
 import { AppError, IGN_INDEX } from '../lib/errors.js';
 import { isUniqueViolation } from '../lib/pgErrors.js';
+import { hasNoExtension, isStaticRequest } from '../lib/staticPaths.js';
 
 type Body = { error: { code: string; message: string; details: Record<string, unknown> } };
 const body = (code: string, message: string, details: Record<string, unknown> = {}): Body => ({
@@ -12,6 +13,16 @@ const body = (code: string, message: string, details: Record<string, unknown> = 
 export default fp(
   async (app) => {
     app.setNotFoundHandler((request, reply) => {
+      // Client-side routes of the served frontend (no file extension, a browser asking for HTML) get index.html, so a
+      // refresh on a deep link works. Unknown /api/* paths and missing assets (with an extension) stay a JSON 404.
+      if (
+        app.frontend &&
+        isStaticRequest(request.method, request.url) &&
+        hasNoExtension(request.url) &&
+        String(request.headers.accept ?? '').includes('text/html')
+      ) {
+        return app.frontend.serveIndex(reply);
+      }
       reply
         .status(404)
         .send(body('NOT_FOUND', `Route ${request.method} ${request.url.split('?')[0]} not found`));

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import type { Env } from '../config/env.js';
+import { isStaticRequest } from '../lib/staticPaths.js';
 import type { Tx } from '../lib/tx.js';
 import type { AuthContext } from '../types.js';
 
@@ -72,6 +73,7 @@ export default fp(
 
     app.addHook('onRequest', async (request) => {
       if (isBotPath(request.url)) return;
+      if (app.frontend && isStaticRequest(request.method, request.url)) return; // static files never look up a session
       const token = request.cookies[cookieName];
       if (!token || token.length > 200) return;
       const id = hashToken(token);

@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import type { FastifyReply } from 'fastify';
 import type { Env } from './config/env.js';
 import type { TxRunner } from './lib/tx.js';
 
@@ -20,6 +21,8 @@ declare module 'fastify' {
     env: Env;
     /** wrong-bot-key counters per IP, see plugins/botAuth.ts */
     botFailures: Map<string, { count: number; resetAt: number }>;
+    /** Set when the built frontend is served (plugins/frontend.ts); null = API only. */
+    frontend: { serveIndex: (reply: FastifyReply) => FastifyReply } | null;
   }
   interface FastifyRequest {
     auth: AuthContext | null;

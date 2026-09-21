@@ -6,7 +6,7 @@ Audience: whoever deploys and runs the backend. Everything here was run end to e
 
 - **One Node.js 22 process** (Fastify) plus **one PostgreSQL 16 database**. The notification worker and the auction sweeper run inside the API process.
 - **Run exactly one API instance.** Locks and `SKIP LOCKED` keep a second instance correct, but the in-memory pieces (rate-limit counters, the OAuth state single-use guard, the bot-key failure counters) are per process, so a second instance only weakens them. Scale the database, not the API.
-- **One origin.** A reverse proxy serves the frontend and forwards `/api` (and `/healthz`) to the API on the same host over HTTPS. There is no CORS configuration; the browser must see one origin. In production the session cookie is `__Host-session` (`Secure; HttpOnly; SameSite=Lax; Path=/`), which only works over HTTPS on that exact host.
+- **One origin.** The API process itself serves the built frontend (`frontend/dist`, section 3a) next to `/api`, so one process gives both the site and the API; a reverse proxy in front only terminates TLS. There is no CORS configuration; the browser must see one origin. In production the session cookie is `__Host-session` (`Secure; HttpOnly; SameSite=Lax; Path=/`), which only works over HTTPS on that exact host.
 - Frontend dev: the Vite dev proxy makes `http://localhost:5173` the single origin (`FRONTEND_URL`).
 
 ## 2. Environment variables
@@ -23,7 +23,9 @@ The server reads the process environment only (it does not load `.env` by itself
 | `SESSION_SECRET` | yes | signs the OAuth state cookie. Generate: `openssl rand -base64 48`. `.env.example` ships it empty on purpose. **In production the server refuses to start** with a placeholder (for example `change-me...`), fewer than 43 characters, or very low entropy |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | yes | Discord OAuth (section 4) |
 | `DISCORD_API_BASE` | no | only for tests against a mock Discord |
-| `FRONTEND_URL` | yes | the public origin. Post-login redirect target and the allowed `Origin` for cookie writes |
+| `FRONTEND_URL` | yes | the public origin. Post-login redirect target and the allowed `Origin` for cookie writes. When the backend serves the frontend this is the backend's own public URL (`http://localhost:3000` locally, your https host in production) |
+| `SERVE_FRONTEND` | no (auto) | `auto` serves the built frontend when `FRONTEND_DIST_DIR` holds an `index.html` and otherwise runs API-only; `on` serves it and refuses to start if `index.html` is missing; `off` never serves it (section 3a) |
+| `FRONTEND_DIST_DIR` | no | the built frontend. Default `../frontend/dist` next to the backend (any working directory); a relative value is taken from the working directory |
 | `BOT_API_KEYS` | yes | one or two sha256 hex digests of inbound bot keys (section 5) |
 | `NOTIFICATIONS_PROVIDER` | no (off) | `off`, `fake` (dev), `bot` (section 9) |
 | `DISCORD_BOT_NOTIFY_URL`, `DISCORD_BOT_NOTIFY_SECRET` | if provider is `bot` | where and how the API pushes promotion messages |
@@ -66,6 +68,23 @@ Members are created only by the Discord bot (`PUT /api/v1/bot/members/:discordId
 1. Register the existing roster once: prepare a JSON array `[{"discordId":"...","ign":"...","job":"Knight","nickname":"..."}]` and run `npx tsx scripts/bulk-import-members.ts members.json --dry-run`, then again without `--dry-run`. The dry run reports duplicate IGNs and unknown jobs without saving anything.
 2. Make the first admin: the person must already be a member, then `npm run grant-admin -- <discordId>` on the server. Repeating it is harmless.
 
+
+## 3a. Serving the frontend from the backend
+
+The backend can serve the built frontend, so a single process gives the site and the API on one origin.
+
+```bash
+cd frontend && npm ci && npm run build      # writes frontend/dist
+cd ../backend                                # start the backend as in section 3
+# FRONTEND_DIST_DIR=/path/to/dist            # only when dist is somewhere else
+```
+
+- **When it is on.** `SERVE_FRONTEND=auto` (default) serves the frontend only if `FRONTEND_DIST_DIR` (default `../frontend/dist`) contains an `index.html`; without a build the server starts normally and serves the API only. Use `SERVE_FRONTEND=on` in production to fail at startup when the build is missing, and `off` to never serve it. The file list is read at startup: restart the backend after building a new frontend.
+- **Routes.** `/api/*`, `/healthz` and `/docs/json` are unchanged, and an unknown `/api/...` path still returns the JSON 404 envelope. Any other `GET` without a file extension and with `Accept: text/html` returns `index.html`, so a refresh on a client-side route works. A missing file with an extension (`/assets/x.js`) is a plain 404, never `index.html`.
+- **Caching.** Files under `/assets/` are content-hashed and sent `public, max-age=31536000, immutable`; `index.html` is `no-cache`; other files (favicon) are cached for an hour. The helmet headers, including the CSP, apply to the pages too. The CSP needed no change: the Vite build uses only external scripts and styles, its inline `style` attributes are covered by `style-src 'unsafe-inline'`, and the Google Fonts stylesheet and font files are covered by `style-src https:` and `font-src https:`.
+- **Limits and sessions.** Static requests never touch the database: they skip the session lookup, the per-IP pre-auth budget and the rate limiter, so a page load (many files at once) cannot trip a limiter, and they never set a cookie.
+- **Set `FRONTEND_URL` to the origin the browser uses** (for example `http://localhost:3000` when browsing the backend directly), because the CSRF `Origin` check compares against it.
+
 ## 4. Discord OAuth application
 
 1. https://discord.com/developers/applications, New Application.
@@ -87,7 +106,22 @@ Put the digest in `BOT_API_KEYS`. The bot sends it as header `X-Bot-Key`. **Rota
 
 ## 6. Reverse proxy
 
-- Terminate TLS at the proxy and forward `/api/` and `/healthz` to `127.0.0.1:3000`; serve the built frontend for everything else, on the same host.
+- Terminate TLS at the proxy and forward **everything** to `127.0.0.1:3000` on the same host. The backend serves the built frontend itself (section 3a), so the proxy no longer needs to serve static files. Minimal nginx:
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name clover.example.com;
+  # ssl_certificate / ssl_certificate_key ...
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+  }
+}
+```
+
+(Serving `frontend/dist` from nginx instead still works: forward only `/api/` and `/healthz`, and set `SERVE_FRONTEND=off`.)
 - Set `X-Forwarded-For` from the connection and set `TRUST_PROXY_HOPS=1` (section 7).
 - Do not cache `/api/` responses (the API sends `Cache-Control: no-store`; the polling endpoint uses `no-cache` plus an ETag).
 - Request body limit: the API rejects bodies over Fastify's 1 MB default.

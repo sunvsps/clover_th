@@ -1,5 +1,6 @@
 import fp from 'fastify-plugin';
 import { AppError } from '../lib/errors.js';
+import { isStaticRequest } from '../lib/staticPaths.js';
 
 /**
  * Cheap per-IP request budget applied BEFORE the session lookup (design 9, security review M-1). The session lookup is
@@ -14,6 +15,8 @@ export default fp(
     const windows = new Map<string, { count: number; resetAt: number }>();
     app.addHook('onRequest', async (request) => {
       if (request.url === '/healthz') return;
+      // static files of the built frontend: a page load fetches many, they touch no database and cost nothing here
+      if (app.frontend && isStaticRequest(request.method, request.url)) return;
       const now = Date.now();
       let w = windows.get(request.ip);
       if (!w || w.resetAt <= now) {

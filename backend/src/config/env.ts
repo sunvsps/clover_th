@@ -24,6 +24,14 @@ const schema = z
     DISCORD_REDIRECT_URI: z.string().url(),
     DISCORD_API_BASE: z.string().url().default('https://discord.com'),
     FRONTEND_URL: z.string().url(),
+    /**
+     * Serve the built frontend (frontend/dist) from this process, on the same origin as the API.
+     * auto (default) = serve when FRONTEND_DIST_DIR contains an index.html, otherwise API only;
+     * on = serve, and refuse to start when the directory has no index.html; off = never serve it.
+     */
+    SERVE_FRONTEND: z.enum(['auto', 'on', 'off']).default('auto'),
+    /** Where the built frontend is. Default: ../frontend/dist next to the backend (a relative value is taken from the working directory). */
+    FRONTEND_DIST_DIR: z.string().min(1).optional(),
     BOT_API_KEYS: z
       .string()
       .min(1)

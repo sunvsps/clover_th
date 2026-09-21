@@ -12,6 +12,7 @@ import {
 } from 'fastify-type-provider-zod';
 import type { Writable } from 'node:stream';
 import type { Env } from './config/env.js';
+import { isStaticRequest } from './lib/staticPaths.js';
 import { createTx } from './lib/tx.js';
 import activityRoutes from './modules/activities/routes.js';
 import auctionRoutes from './modules/auctions/routes.js';
@@ -26,6 +27,7 @@ import notificationRoutes from './modules/notifications/routes.js';
 import plannerRoutes from './modules/planner/routes.js';
 import registrationRoutes from './modules/registrations/routes.js';
 import csrf from './plugins/csrf.js';
+import frontend from './plugins/frontend.js';
 import errorHandler from './plugins/errorHandler.js';
 import { genReqId, default as requestId } from './plugins/requestId.js';
 import preauth from './plugins/preauth.js';
@@ -85,6 +87,7 @@ export async function buildApp(opts: BuildOptions) {
   const prisma = opts.prisma ?? new PrismaClient({ datasourceUrl: env.DATABASE_URL });
   app.decorate('env', env);
   app.decorate('botFailures', new Map());
+  app.decorate('frontend', null);
   app.decorate('prisma', prisma);
   app.decorate(
     'tx',
@@ -107,6 +110,8 @@ export async function buildApp(opts: BuildOptions) {
     max: (req) => (req.auth ? env.RATE_LIMIT_AUTH_PER_MIN : env.RATE_LIMIT_ANON_PER_MIN),
     timeWindow: '1 minute',
     keyGenerator: (req) => req.auth?.memberId ?? req.ip,
+    // static files of the built frontend (a page load fetches many at once) never count against the budget
+    allowList: (req) => app.frontend !== null && isStaticRequest(req.method, req.url),
   });
   await app.register(swagger, {
     openapi: { info: { title: 'Clover_TH API', version: '0.1.0' } },
@@ -135,6 +140,7 @@ export async function buildApp(opts: BuildOptions) {
     );
   }
 
+  await app.register(frontend); // static files + SPA fallback, only when a built frontend is found
   await app.register(healthRoutes);
   await app.register(authRoutes);
   await app.register(botRoutes);

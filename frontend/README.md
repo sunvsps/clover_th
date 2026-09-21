@@ -24,6 +24,17 @@ npm run api:types:check  # fails when the copy is out of date (CI)
 4. Backend: `npm run dev` (port 3000).
 5. Frontend: `cd frontend && npm ci && npm run dev`, open http://localhost:5173.
 
+## Run everything from the backend
+
+For a demo or a single-host deployment no Vite server is needed: build the frontend and let the backend serve it next to the API on one origin.
+
+```
+cd frontend && npm ci && npm run build      # writes frontend/dist
+cd ../backend && npm run start              # site and API on http://localhost:3000
+```
+
+Set `FRONTEND_URL=http://localhost:3000` in `backend/.env` (the CSRF check compares the browser `Origin` with it). The backend finds `../frontend/dist` by itself (`FRONTEND_DIST_DIR` overrides it, `SERVE_FRONTEND=off` disables it); without a build it just serves the API. Restart it after rebuilding. Details: `docs/deploy.md`, section 3a.
+
 ## Signing in
 
 The Sign-in button goes to `/api/v1/auth/discord/login`. Two ways to get a session in development:
@@ -39,7 +50,3 @@ The Sign-in button goes to `/api/v1/auth/discord/login`. Two ways to get a sessi
 - `src/lib/bangkok.ts`: date keys (`YYYY-MM-DD`) and week maths in Asia/Bangkok, identical in any browser time zone.
 - `src/data/guild.ts`: UI types and helpers only (no member or job data).
 - Members are keyed by `memberId` everywhere and shown by `ign`.
-
-## Still local mock state (replaced in WP12-WP15)
-
-The item auction board and its admin panel, weekly attendance, team assignments, and the roster / job edits (rename, job change, add or remove member, job manager) work on local state only: they start from the API data but are not saved.

@@ -29,6 +29,8 @@ export function testEnv(db: TestDb, mock?: MockDiscord, extra: Record<string, st
     RATE_LIMIT_ANON_PER_MIN: '1000000',
     BOT_KEY_FAILS_PER_MIN: '1000000',
     PREAUTH_LIMIT_PER_MIN: '10000000',
+    // the built frontend is only served by its own tests (test/frontend), never by accident from ../frontend/dist
+    SERVE_FRONTEND: 'off',
     ...extra,
   });
 }
