@@ -1,24 +1,25 @@
 import { useState } from "react";
-import { jobStyle, type GuildMember, type Job } from "../data/guild";
+import type { Job, Member } from "../api";
+import { jobStyle } from "../data/guild";
 
 type Props = {
   jobs: Job[];
-  members: GuildMember[];
-  assignments: Record<string, string>;
+  members: Member[];
+  placedIds: Set<string>;
   isThai: boolean;
 };
 
-/** Horizontal bar per job: members already placed in a subteam (solid) + still unassigned (tint). */
-export default function JobChart({ jobs, members, assignments, isThai }: Props) {
+/** Horizontal bar per job: members placed in the selected plan (solid) + the rest of the roster (tint). */
+export default function JobChart({ jobs, members, placedIds, isThai }: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
   const rows = jobs.map((job) => {
-    const ofJob = members.filter((member) => member.job === job.id);
-    const inTeam = ofJob.filter((member) => assignments[member.name]).length;
+    const ofJob = members.filter((member) => member.jobId === job.id);
+    const inTeam = ofJob.filter((member) => placedIds.has(member.id)).length;
     return { job, total: ofJob.length, inTeam, free: ofJob.length - inTeam };
   });
   const max = Math.max(1, ...rows.map((row) => row.total));
-  const inTeamLabel = isThai ? "อยู่ในทีมแล้ว" : "In a subteam";
-  const freeLabel = isThai ? "ยังไม่มีทีม" : "Unassigned";
+  const inTeamLabel = isThai ? "อยู่ในทีมแล้ว" : "Placed";
+  const freeLabel = isThai ? "ยังไม่มีทีม" : "Not placed";
 
   return (
     <div className="job-chart">
@@ -32,12 +33,7 @@ export default function JobChart({ jobs, members, assignments, isThai }: Props) 
       </div>
       <div className="chart-rows" role="img" aria-label={isThai ? "กราฟจำนวนสมาชิกแต่ละอาชีพ" : "Members per job chart"}>
         {rows.map(({ job, total, inTeam, free }) => (
-          <div
-            className={`chart-row ${hovered === job.id ? "hovered" : ""}`}
-            key={job.id}
-            onMouseEnter={() => setHovered(job.id)}
-            onMouseLeave={() => setHovered(null)}
-          >
+          <div className={`chart-row ${hovered === job.id ? "hovered" : ""}`} key={job.id} onMouseEnter={() => setHovered(job.id)} onMouseLeave={() => setHovered(null)}>
             <span className="chart-label">
               <i className="job-dot" style={jobStyle(job)} />
               <span>{job.label}</span>

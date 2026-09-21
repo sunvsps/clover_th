@@ -1,100 +1,79 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, Copy, Hammer, RotateCcw, Shield, Users, X } from "lucide-react";
-import {
-  addDays,
-  attendanceKey,
-  formatDay,
-  guildDays,
-  scheduleEvents,
-  startOfWeek,
-  timeSlots,
-  toDateKey,
-  weekDayNames,
-  weekDayShort,
-  findJob,
-  jobStyle,
-  type Attendance,
-  type GuildMember,
-  type Job,
-  type ScheduleEvent,
-} from "../data/guild";
-
-export type AttendanceBook = Record<string, Record<string, Attendance>>;
-
-type Props = {
-  isThai: boolean;
-  userName: string;
-  isAdmin: boolean;
-  jobs: Job[];
-  members: GuildMember[];
-  attendance: AttendanceBook;
-  onSetAttendance: (key: string, member: string, status: Attendance | null) => void;
-  onNotice: (message: string) => void;
-};
+import { ArrowLeft, ArrowRight, CalendarDays, Check, Clock, Copy, Hammer, RotateCcw, Shield, Users, X } from "lucide-react";
+import { registrations as registrationsApi, serverNow, type RegistrationEntry, type RegistrationStatus, type ScheduleEvent } from "../api";
+import { findJob, jobStyle } from "../data/guild";
+import { addDays, formatDay, startOfWeek, todayKey, weekDayNames, weekDayShort, yearOf } from "../lib/dates";
+import { usePolling } from "../hooks/usePolling";
+import { memberName, type ViewProps } from "../lib/types";
 
 type Selection = { dateKey: string; event: ScheduleEvent };
 
-function statusLabel(status: Attendance | undefined, isThai: boolean) {
-  if (status === "joined") return isThai ? "ลงเล่น" : "Playing";
-  if (status === "leave") return isThai ? "ลา" : "On leave";
-  return isThai ? "ยังไม่เลือก" : "Not set";
-}
+/** Start of an occurrence as epoch ms (guild time is UTC+7 all year). */
+const occurrenceStart = (dateKey: string, startTime: string) => Date.parse(`${dateKey}T${startTime}:00+07:00`);
 
-export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, members, attendance, onSetAttendance, onNotice }: Props) {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+export default function WeeklySchedule({ isThai, me, isAdmin, data, notify, notifyError }: ViewProps) {
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(todayKey()));
   const [selected, setSelected] = useState<Selection | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
   const [adminTarget, setAdminTarget] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const todayKey = toDateKey(new Date());
-  const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
-  const dayKeys = days.map(toDateKey);
+  const today = todayKey();
+  const dayKeys = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const dayNames = isThai ? weekDayNames.th : weekDayNames.en;
   const shortNames = isThai ? weekDayShort.th : weekDayShort.en;
-  const weekEnd = addDays(weekStart, 6);
-  const weekLabel = `${formatDay(weekStart, isThai)} – ${formatDay(weekEnd, isThai)} ${weekEnd.getFullYear()}`;
-  const isCurrentWeek = dayKeys.includes(todayKey);
+  const weekEnd = dayKeys[6];
+  const weekLabel = `${formatDay(weekStart, isThai)} – ${formatDay(weekEnd, isThai)} ${yearOf(weekEnd)}`;
+  const isCurrentWeek = dayKeys.includes(today);
+  const events = data.events;
+  const timeSlots = useMemo(() => [...new Set(events.map((event) => event.startTime))].sort(), [events]);
+  const activityOf = (event: ScheduleEvent) => data.activities.find((activity) => activity.id === event.activityId);
 
-  const book = (dateKey: string, eventId: string) => attendance[attendanceKey(dateKey, eventId)] ?? {};
-  const myStatus = (dateKey: string, eventId: string) => book(dateKey, eventId)[userName];
-  const roster = (dateKey: string, eventId: string, status: Attendance) =>
-    Object.entries(book(dateKey, eventId))
-      .filter(([, value]) => value === status)
-      .map(([member]) => member);
-  const eventsAt = (slot: string, day: number) => scheduleEvents.filter((event) => event.slot === slot && event.day === day);
-  const eventsOn = (day: number) =>
-    [...scheduleEvents.filter((event) => event.day === day)].sort((a, b) => a.start.localeCompare(b.start));
+  const { data: week, refresh } = usePolling(() => registrationsApi.list(weekStart, weekEnd), 10000, [weekStart]);
+  const entriesFor = (dateKey: string, eventId: string): RegistrationEntry[] => week?.occurrences[`${dateKey}:${eventId}`] ?? week?.occurrences[`${eventId}:${dateKey}`] ?? [];
+  const myEntry = (dateKey: string, eventId: string) => entriesFor(dateKey, eventId).find((entry) => entry.memberId === me.memberId);
+  const byStatus = (dateKey: string, eventId: string, status: RegistrationEntry["status"]) => entriesFor(dateKey, eventId).filter((entry) => entry.status === status);
+  const eventsAt = (slot: string, day: number) => events.filter((event) => event.startTime === slot && event.dayOfWeek === day);
+  const eventsOn = (day: number) => [...events.filter((event) => event.dayOfWeek === day)].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const isClosed = (dateKey: string, event: ScheduleEvent) => occurrenceStart(dateKey, event.startTime) <= serverNow();
 
-  const weekEntries = dayKeys.flatMap((dateKey, day) =>
-    eventsOn(day).map((event) => ({ dateKey, event, joined: roster(dateKey, event.id, "joined"), leave: roster(dateKey, event.id, "leave") })),
-  );
-  const myJoined = weekEntries.filter(({ dateKey, event }) => myStatus(dateKey, event.id) === "joined").length;
-  const myLeave = weekEntries.filter(({ dateKey, event }) => myStatus(dateKey, event.id) === "leave").length;
-  const weekJoined = weekEntries.reduce((total, entry) => total + entry.joined.length, 0);
-  const weekLeave = weekEntries.reduce((total, entry) => total + entry.leave.length, 0);
+  const myJoined = dayKeys.flatMap((dateKey, day) => eventsOn(day).filter((event) => myEntry(dateKey, event.id)?.status === "JOINED" || myEntry(dateKey, event.id)?.status === "WAITLISTED")).length;
+  const myLeave = dayKeys.flatMap((dateKey, day) => eventsOn(day).filter((event) => myEntry(dateKey, event.id)?.status === "LEAVE")).length;
 
-  // On narrow screens the grid scrolls sideways; bring today's column into view.
   useEffect(() => {
     const container = scrollRef.current;
-    const today = container?.querySelector<HTMLElement>(".schedule-day.today");
-    if (!container || !today || container.scrollWidth <= container.clientWidth) return;
-    container.scrollLeft = Math.max(0, today.offsetLeft - 66 - 8);
+    const todayColumn = container?.querySelector<HTMLElement>(".schedule-day.today");
+    if (!container || !todayColumn || container.scrollWidth <= container.clientWidth) return;
+    container.scrollLeft = Math.max(0, todayColumn.offsetLeft - 66 - 8);
   }, [weekStart]);
 
-  const adminMatches = adminSearch.trim()
-    ? members.filter((member) => member.name.toLowerCase().includes(adminSearch.trim().toLowerCase())).slice(0, 8)
-    : [];
+  const adminMatches = adminSearch.trim() ? data.members.filter((member) => member.ign.toLowerCase().includes(adminSearch.trim().toLowerCase())).slice(0, 8) : [];
 
-  function chooseMine(status: Attendance | null) {
-    if (!selected) return;
-    onSetAttendance(attendanceKey(selected.dateKey, selected.event.id), userName, status);
-    setSelected(null);
-  }
-
-  function chooseFor(member: string, status: Attendance | null) {
-    if (!selected) return;
-    onSetAttendance(attendanceKey(selected.dateKey, selected.event.id), member, status);
+  async function setStatus(memberId: string, status: RegistrationStatus) {
+    if (!selected || busy) return;
+    setBusy(true);
+    try {
+      const result = await registrationsApi.set(selected.event.id, selected.dateKey, memberId, status);
+      const who = memberId === me.memberId ? (isThai ? "คุณ" : "You") : memberName(data, memberId);
+      const lines = [
+        result.status === "JOINED"
+          ? isThai ? `${who} ลงทะเบียนเล่นแล้ว` : `${who} registered as playing.`
+          : result.status === "WAITLISTED"
+            ? isThai ? `${who} อยู่ในรายชื่อสำรอง ลำดับ ${result.waitlistPosition ?? "?"}` : `${who} is waitlisted (#${result.waitlistPosition ?? "?"}).`
+            : status === "LEAVE"
+              ? isThai ? `บันทึกการลาของ ${who} แล้ว` : `Leave saved for ${who}.`
+              : isThai ? `ล้างสถานะของ ${who} แล้ว` : `Status cleared for ${who}.`,
+      ];
+      if (result.promoted.length) lines.push(isThai ? `เลื่อนจากสำรอง: ${result.promoted.map((id) => memberName(data, id)).join(", ")}` : `Promoted from waitlist: ${result.promoted.map((id) => memberName(data, id)).join(", ")}`);
+      if (result.backfilled.length) lines.push(isThai ? `ช่องในทีมถูกแทนโดย: ${result.backfilled.map((b) => `${memberName(data, b.promotedMemberId)} → ${b.teamName} #${b.slot}`).join(", ")}` : `Slot backfilled: ${result.backfilled.map((b) => `${memberName(data, b.promotedMemberId)} → ${b.teamName} #${b.slot}`).join(", ")}`);
+      notify(lines.join(" · "));
+      await refresh();
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function closeDialog() {
@@ -106,22 +85,53 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
   function copySummary() {
     const lines = [`Clover_TH ${isThai ? "ตารางกิจกรรม" : "activity roster"} ${weekLabel}`, ""];
     dayKeys.forEach((dateKey, day) => {
-      const entries = weekEntries.filter((entry) => entry.dateKey === dateKey && (entry.joined.length || entry.leave.length));
-      if (entries.length === 0) return;
-      lines.push(`${dayNames[day]} ${formatDay(days[day], isThai)}`);
-      entries.forEach(({ event, joined, leave }) => {
-        lines.push(`  ${event.name} (${event.start}-${event.end})`);
+      const list = eventsOn(day).filter((event) => entriesFor(dateKey, event.id).length);
+      if (!list.length) return;
+      lines.push(`${dayNames[day]} ${formatDay(dateKey, isThai)}`);
+      list.forEach((event) => {
+        lines.push(`  ${event.name} (${event.startTime}-${event.endTime})`);
+        const joined = byStatus(dateKey, event.id, "JOINED").map((entry) => memberName(data, entry.memberId));
+        const waitlisted = byStatus(dateKey, event.id, "WAITLISTED").map((entry) => memberName(data, entry.memberId));
+        const leave = byStatus(dateKey, event.id, "LEAVE").map((entry) => memberName(data, entry.memberId));
         if (joined.length) lines.push(`    ${isThai ? "ลงเล่น" : "Playing"}: ${joined.join(", ")}`);
+        if (waitlisted.length) lines.push(`    ${isThai ? "สำรอง" : "Waitlist"}: ${waitlisted.join(", ")}`);
         if (leave.length) lines.push(`    ${isThai ? "ลา" : "Leave"}: ${leave.join(", ")}`);
       });
       lines.push("");
     });
     navigator.clipboard?.writeText(lines.join("\n").trim());
-    onNotice(isThai ? "คัดลอกสรุปการลงทะเบียนแล้ว" : "Weekly roster copied to clipboard.");
+    notify(isThai ? "คัดลอกสรุปการลงทะเบียนแล้ว" : "Weekly roster copied to clipboard.");
   }
 
-  const selectedStatus = selected ? myStatus(selected.dateKey, selected.event.id) : undefined;
-  const selectedDate = selected ? days[dayKeys.indexOf(selected.dateKey)] : null;
+  const statusLabel = (status: RegistrationEntry["status"] | undefined, pos?: number) => {
+    if (status === "JOINED") return isThai ? "ลงเล่น" : "Playing";
+    if (status === "WAITLISTED") return isThai ? `สำรอง #${pos ?? "?"}` : `Waitlist #${pos ?? "?"}`;
+    if (status === "LEAVE") return isThai ? "ลา" : "On leave";
+    return isThai ? "ยังไม่เลือก" : "Not set";
+  };
+
+  const personChip = (entry: RegistrationEntry, dateKey: string, eventId: string) => {
+    const member = data.membersById.get(entry.memberId);
+    const status = entry.status === "WAITLISTED" ? "waitlisted" : entry.status === "LEAVE" ? "leave" : "joined";
+    return (
+      <span className={`person ${status}`} key={entry.memberId} title={member ? findJob(data.jobs, member.jobId)?.label : undefined}>
+        <i className="job-dot" style={jobStyle(findJob(data.jobs, member?.jobId))} />
+        {memberName(data, entry.memberId)}
+        {entry.status === "WAITLISTED" && <small>#{entry.waitlistPos}</small>}
+        {entry.placed && <small title={isThai ? "อยู่ในทีมแล้ว" : "Placed in a team"}>{isThai ? "ทีม" : "placed"}</small>}
+        {!entry.placed && entry.reserveOrder != null && <small>{isThai ? `สำรอง ${entry.reserveOrder}` : `res ${entry.reserveOrder}`}</small>}
+        {(isAdmin || entry.memberId === me.memberId) && selected?.dateKey === dateKey && selected.event.id === eventId && (
+          <button type="button" onClick={() => setStatus(entry.memberId, "NONE")} aria-label={isThai ? "ล้าง" : "Clear"} disabled={busy}>
+            <X size={10} />
+          </button>
+        )}
+      </span>
+    );
+  };
+
+  const selectedEntry = selected ? myEntry(selected.dateKey, selected.event.id) : undefined;
+  const selectedActivity = selected ? activityOf(selected.event) : undefined;
+  const selectedClosed = selected ? isClosed(selected.dateKey, selected.event) : false;
 
   return (
     <section className="feature-page schedule-page">
@@ -133,8 +143,8 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
           <h2>{isThai ? "ตารางกิจกรรมรายสัปดาห์" : "Weekly activity schedule"}</h2>
           <p>
             {isThai
-              ? "กดที่กิจกรรมเพื่อลงทะเบียนว่าจะเล่น หรือกดลาในกิจกรรมที่ไม่สะดวก แอดมินบันทึกแทนสมาชิกคนอื่นได้"
-              : "Tap an activity to register as playing, or mark leave for the ones you cannot attend. Admins can record on behalf of other members."}
+              ? "กดที่กิจกรรมเพื่อลงทะเบียนว่าจะเล่น หรือกดลาในกิจกรรมที่ไม่สะดวก ปิดลงทะเบียนอัตโนมัติเมื่อกิจกรรมเริ่ม"
+              : "Tap an activity to register as playing, or mark leave. Registration closes automatically when the activity starts."}
           </p>
         </div>
         <div className="schedule-stats">
@@ -158,7 +168,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
         <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week">
           <ArrowRight size={15} />
         </button>
-        <button type="button" className="today-button" disabled={isCurrentWeek} onClick={() => setWeekStart(startOfWeek(new Date()))}>
+        <button type="button" className="today-button" disabled={isCurrentWeek} onClick={() => setWeekStart(startOfWeek(todayKey()))}>
           {isThai ? "วันนี้" : "Today"}
         </button>
       </div>
@@ -166,49 +176,48 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
       <div className="schedule-scroll" ref={scrollRef}>
         <div className="schedule-grid" role="grid" aria-label="Weekly schedule">
           <span className="schedule-corner" />
-          {days.map((date, index) => (
-            <span
-              className={`schedule-day ${dayKeys[index] === todayKey ? "today" : ""}`}
-              key={dayKeys[index]}
-              role="columnheader"
-            >
+          {dayKeys.map((dateKey, index) => (
+            <span className={`schedule-day ${dateKey === today ? "today" : ""}`} key={dateKey} role="columnheader">
               <span>{dayNames[index]}</span>
-              <strong>{formatDay(date, isThai)}</strong>
+              <strong>{formatDay(dateKey, isThai)}</strong>
             </span>
           ))}
           {timeSlots.map((slot) => (
             <div className="schedule-row" role="row" key={slot}>
               <span className="schedule-time">{slot}</span>
               {dayKeys.map((dateKey, day) => (
-                <div className={`schedule-cell ${dateKey === todayKey ? "today" : ""} ${dateKey < todayKey ? "past" : ""}`} role="gridcell" key={`${slot}-${dateKey}`}>
+                <div className={`schedule-cell ${dateKey === today ? "today" : ""} ${dateKey < today ? "past" : ""}`} role="gridcell" key={`${slot}-${dateKey}`}>
                   {eventsAt(slot, day).map((event) => {
-                    const status = myStatus(dateKey, event.id);
-                    const joinedCount = roster(dateKey, event.id, "joined").length;
-                    const leaveCount = roster(dateKey, event.id, "leave").length;
+                    const mine = myEntry(dateKey, event.id);
+                    const status = mine?.status === "LEAVE" ? "leave" : mine ? "joined" : "";
+                    const joinedCount = byStatus(dateKey, event.id, "JOINED").length;
+                    const leaveCount = byStatus(dateKey, event.id, "LEAVE").length;
+                    const activity = activityOf(event);
                     const isSelected = selected?.dateKey === dateKey && selected.event.id === event.id;
                     return (
                       <button
                         type="button"
-                        className={`schedule-event ${guildDays.includes(day) ? "highlight" : ""} ${status ?? ""} ${isSelected ? "selected" : ""}`}
+                        className={`schedule-event ${event.isGuild ? "highlight" : ""} ${status} ${isSelected ? "selected" : ""} ${isClosed(dateKey, event) ? "closed" : ""}`}
                         key={event.id}
                         onClick={() => setSelected({ dateKey, event })}
-                        title={`${event.name} ${event.start}-${event.end}`}
+                        title={`${event.name} ${event.startTime}-${event.endTime}`}
                       >
-                        {event.guild && <Hammer size={12} className="guild-mark" />}
+                        {event.isGuild && <Hammer size={12} className="guild-mark" />}
                         <span className="event-name">{event.name}</span>
                         <span className="event-time">
-                          {event.start}-{event.end}
+                          {event.startTime}-{event.endTime}
                         </span>
                         <span className="event-meta">
-                          {status && (
+                          {mine && (
                             <small className={`event-status ${status}`}>
-                              {status === "joined" ? <Check size={10} /> : <X size={10} />}
-                              {status === "joined" ? (isThai ? "เล่น" : "IN") : isThai ? "ลา" : "OUT"}
+                              {mine.status === "LEAVE" ? <X size={10} /> : <Check size={10} />}
+                              {mine.status === "LEAVE" ? (isThai ? "ลา" : "OUT") : mine.status === "WAITLISTED" ? `#${mine.waitlistPos}` : isThai ? "เล่น" : "IN"}
                             </small>
                           )}
                           {(joinedCount > 0 || leaveCount > 0) && (
                             <small className="event-counts">
                               <Users size={9} /> {joinedCount}
+                              {activity?.registrationCapacity != null && `/${activity.registrationCapacity}`}
                               {leaveCount > 0 && <> · <X size={9} /> {leaveCount}</>}
                             </small>
                           )}
@@ -225,10 +234,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
 
       <div className="schedule-legend">
         <span>
-          <i className="legend-swatch highlight" /> {isThai ? "วันกิลด์ (อังคาร · พฤหัส · อาทิตย์)" : "Guild days (Tue · Thu · Sun)"}
-        </span>
-        <span>
-          <Hammer size={12} /> {isThai ? "กิจกรรมกิลด์" : "Guild activity"}
+          <i className="legend-swatch highlight" /> <Hammer size={12} /> {isThai ? "กิจกรรมกิลด์" : "Guild activity"}
         </span>
         <span>
           <i className="status-dot joined" /> {isThai ? "ฉันลงเล่น" : "I'm playing"}
@@ -237,7 +243,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
           <i className="status-dot leave" /> {isThai ? "ฉันลา" : "I'm on leave"}
         </span>
         <span>
-          <Users size={12} /> {isThai ? "จำนวนคนลงเล่น · ลา" : "Playing · leave count"}
+          <Clock size={12} /> {isThai ? "จางลง = ปิดลงทะเบียนแล้ว" : "Faded = registration closed"}
         </span>
       </div>
 
@@ -251,76 +257,58 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
             <Copy size={15} /> {isThai ? "คัดลอกสรุป" : "Copy roster"}
           </button>
         </div>
-        <div className="summary-meta">
-          <span>
-            <Users size={15} /> {weekJoined} {isThai ? "การลงเล่น" : "playing entries"}
-          </span>
-          <span>
-            <X size={15} /> {weekLeave} {isThai ? "การลา" : "leave entries"}
-          </span>
-        </div>
         <div className="day-summary-grid">
           {dayKeys.map((dateKey, day) => {
-            const entries = weekEntries.filter((entry) => entry.dateKey === dateKey);
-            if (entries.length === 0) return null;
-            const hasAny = entries.some((entry) => entry.joined.length || entry.leave.length);
+            const list = eventsOn(day);
+            if (!list.length) return null;
+            const hasAny = list.some((event) => entriesFor(dateKey, event.id).length);
             return (
-              <article className={`day-card ${dateKey === todayKey ? "today" : ""}`} key={dateKey}>
+              <article className={`day-card ${dateKey === today ? "today" : ""}`} key={dateKey}>
                 <header>
                   <span className="day-card-dow">{shortNames[day]}</span>
-                  <strong>{formatDay(days[day], isThai)}</strong>
-                  {dateKey === todayKey && <em>{isThai ? "วันนี้" : "Today"}</em>}
+                  <strong>{formatDay(dateKey, isThai)}</strong>
+                  {dateKey === today && <em>{isThai ? "วันนี้" : "Today"}</em>}
                 </header>
                 {!hasAny && <p className="empty-search">{isThai ? "ยังไม่มีใครลงทะเบียน" : "No registrations yet."}</p>}
-                {entries.map(({ event, joined, leave }) => (
-                  <div className="day-event" key={event.id}>
-                    <button type="button" className="day-event-title" onClick={() => setSelected({ dateKey, event })}>
-                      {event.guild ? <Hammer size={12} /> : <i className={`legend-swatch ${guildDays.includes(day) ? "highlight" : ""}`} />}
-                      <span>{event.name}</span>
-                      <small>
-                        {event.start}-{event.end}
-                      </small>
-                    </button>
-                    {(joined.length > 0 || leave.length > 0) && (
-                      <div className="day-event-people">
-                        {joined.map((member) => (
-                          <span className="person joined" key={`j-${member}`}>
-                            <Check size={10} /> {member}
-                          </span>
-                        ))}
-                        {leave.map((member) => (
-                          <span className="person leave" key={`l-${member}`}>
-                            <X size={10} /> {member}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {list.map((event) => {
+                  const entries = entriesFor(dateKey, event.id);
+                  return (
+                    <div className="day-event" key={event.id}>
+                      <button type="button" className="day-event-title" onClick={() => setSelected({ dateKey, event })}>
+                        {event.isGuild ? <Hammer size={12} /> : <i className="legend-swatch" />}
+                        <span>{event.name}</span>
+                        <small>
+                          {event.startTime}-{event.endTime}
+                        </small>
+                      </button>
+                      {entries.length > 0 && <div className="day-event-people">{entries.map((entry) => personChip(entry, dateKey, event.id))}</div>}
+                    </div>
+                  );
+                })}
               </article>
             );
           })}
         </div>
       </section>
 
-      {selected && selectedDate && (
+      {selected && (
         <div className="page-modal-backdrop" role="presentation" onClick={closeDialog}>
-          <section
-            className="page-modal event-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="event-dialog-title"
-            onClick={(event) => event.stopPropagation()}
-          >
+          <section className="page-modal event-dialog" role="dialog" aria-modal="true" aria-labelledby="event-dialog-title" onClick={(event) => event.stopPropagation()}>
             <div className="page-modal-header">
               <div>
                 <p className="eyebrow">
-                  {selected.event.guild && <Hammer size={11} />} {dayNames[selected.event.day]} {formatDay(selectedDate, isThai)} · {selected.event.start}-
-                  {selected.event.end}
+                  {selected.event.isGuild && <Hammer size={11} />} {dayNames[selected.event.dayOfWeek]} {formatDay(selected.dateKey, isThai)} · {selected.event.startTime}-{selected.event.endTime}
                 </p>
                 <h2 id="event-dialog-title">{selected.event.name}</h2>
                 <small className="event-dialog-status">
-                  {isThai ? "สถานะของฉัน" : "My status"}: <strong className={selectedStatus ?? ""}>{statusLabel(selectedStatus, isThai)}</strong>
+                  {isThai ? "สถานะของฉัน" : "My status"}: <strong className={selectedEntry?.status === "LEAVE" ? "leave" : selectedEntry ? "joined" : ""}>{statusLabel(selectedEntry?.status, selectedEntry?.waitlistPos)}</strong>
+                  {selectedActivity?.registrationCapacity != null && (
+                    <>
+                      {" · "}
+                      {isThai ? "รับ" : "Capacity"} {byStatus(selected.dateKey, selected.event.id, "JOINED").length}/{selectedActivity.registrationCapacity}
+                    </>
+                  )}
+                  {selectedClosed && <> · {isThai ? "ปิดลงทะเบียนแล้ว" : "Registration closed"}</>}
                 </small>
               </div>
               <button type="button" className="modal-close" onClick={closeDialog} aria-label="Close">
@@ -328,14 +316,14 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
               </button>
             </div>
             <div className="event-dialog-actions">
-              <button type="button" className="join-button" onClick={() => chooseMine("joined")}>
+              <button type="button" className="join-button" disabled={busy || (selectedClosed && !isAdmin)} onClick={() => setStatus(me.memberId, "JOINED")}>
                 <Check size={15} /> {isThai ? "ลงทะเบียนเล่น" : "I'm playing"}
               </button>
-              <button type="button" className="leave-button" onClick={() => chooseMine("leave")}>
+              <button type="button" className="leave-button" disabled={busy || (selectedClosed && !isAdmin)} onClick={() => setStatus(me.memberId, "LEAVE")}>
                 <X size={15} /> {isThai ? "ลา ไม่เล่นกิจกรรมนี้" : "Mark leave"}
               </button>
-              {selectedStatus && (
-                <button type="button" className="clear-button" onClick={() => chooseMine(null)}>
+              {selectedEntry && (
+                <button type="button" className="clear-button" disabled={busy || (selectedClosed && !isAdmin)} onClick={() => setStatus(me.memberId, "NONE")}>
                   <RotateCcw size={13} /> {isThai ? "ล้างสถานะ" : "Clear"}
                 </button>
               )}
@@ -350,7 +338,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                   <div className="admin-entry-search">
                     <input
                       type="search"
-                      value={adminTarget ?? adminSearch}
+                      value={adminTarget ? memberName(data, adminTarget) : adminSearch}
                       placeholder={isThai ? "พิมพ์ชื่อสมาชิก..." : "Type a member name..."}
                       onChange={(event) => {
                         setAdminTarget(null);
@@ -360,19 +348,19 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                     {!adminTarget && adminMatches.length > 0 && (
                       <ul className="admin-entry-matches">
                         {adminMatches.map((member) => (
-                          <li key={member.name}>
-                            <button type="button" onClick={() => setAdminTarget(member.name)}>
-                              <i className="job-dot" style={jobStyle(findJob(jobs, member.job))} /> {member.name}
+                          <li key={member.id}>
+                            <button type="button" onClick={() => setAdminTarget(member.id)}>
+                              <i className="job-dot" style={jobStyle(findJob(data.jobs, member.jobId))} /> {member.ign}
                             </button>
                           </li>
                         ))}
                       </ul>
                     )}
                   </div>
-                  <button type="button" className="admin-button" disabled={!adminTarget} onClick={() => adminTarget && chooseFor(adminTarget, "joined")}>
+                  <button type="button" className="admin-button" disabled={!adminTarget || busy} onClick={() => adminTarget && setStatus(adminTarget, "JOINED")}>
                     <Check size={13} /> {isThai ? "เล่น" : "Playing"}
                   </button>
-                  <button type="button" className="admin-button leave" disabled={!adminTarget} onClick={() => adminTarget && chooseFor(adminTarget, "leave")}>
+                  <button type="button" className="admin-button leave" disabled={!adminTarget || busy} onClick={() => adminTarget && setStatus(adminTarget, "LEAVE")}>
                     <X size={13} /> {isThai ? "ลา" : "Leave"}
                   </button>
                 </div>
@@ -380,29 +368,15 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
             )}
 
             <div className="event-roster">
-              {(["joined", "leave"] as Attendance[]).map((status) => {
-                const people = roster(selected.dateKey, selected.event.id, status);
+              {(["JOINED", "WAITLISTED", "LEAVE"] as const).map((status) => {
+                const people = byStatus(selected.dateKey, selected.event.id, status);
+                if (status === "WAITLISTED" && people.length === 0) return null;
                 return (
                   <div key={status}>
                     <span className="eyebrow">
-                      {status === "joined" ? <Users size={11} /> : <X size={11} />} {status === "joined" ? (isThai ? "ลงเล่น" : "PLAYING") : isThai ? "ลา" : "ON LEAVE"} ({people.length})
+                      {status === "LEAVE" ? <X size={11} /> : <Users size={11} />} {status === "JOINED" ? (isThai ? "ลงเล่น" : "PLAYING") : status === "WAITLISTED" ? (isThai ? "สำรอง" : "WAITLIST") : isThai ? "ลา" : "ON LEAVE"} ({people.length})
                     </span>
-                    {people.length === 0 ? (
-                      <p>—</p>
-                    ) : (
-                      <div className="roster-people">
-                        {people.map((member) => (
-                          <span className={`person ${status}`} key={member}>
-                            {member}
-                            {(isAdmin || member === userName) && (
-                              <button type="button" onClick={() => chooseFor(member, null)} aria-label={isThai ? "ล้าง" : "Clear"}>
-                                <X size={10} />
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    {people.length === 0 ? <p>—</p> : <div className="roster-people">{people.map((entry) => personChip(entry, selected.dateKey, selected.event.id))}</div>}
                   </div>
                 );
               })}
