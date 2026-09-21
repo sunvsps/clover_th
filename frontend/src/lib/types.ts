@@ -16,6 +16,7 @@ export type ViewProps = {
   data: GuildData;
   notify: (message: string) => void;
   notifyError: (error: unknown) => void;
+  reloadData: () => Promise<void>;
 };
 
 export const memberName = (data: GuildData, memberId: string) => data.membersById.get(memberId)?.ign ?? memberId.slice(0, 8);

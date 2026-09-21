@@ -534,3 +534,17 @@
   .pref-panel { position: static; }
   .category-block { grid-template-columns: 1fr; }
 }
+
+/* ---------- CSV import + CP ---------- */
+.chip-cp { flex: 0 0 auto; padding: 1px 5px; border-radius: 8px; background: rgba(0, 0, 0, .22); color: inherit; font: 700 9px 'DM Mono', monospace; letter-spacing: -.02em; }
+.team-cp { color: #e8c46a; font-weight: 700; }
+.roster-import { width: min(760px, 100%); }
+.file-drop { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 14px; color: #c3cbc0; background: #202a1f; border: 1px dashed #526749; border-radius: 8px; cursor: pointer; font-size: 12px; }
+.file-drop:hover { border-color: #b9e86d; color: #e8eee6; }
+.file-drop input { display: none; }
+.import-options { display: flex; flex-wrap: wrap; gap: 14px; margin: 4px 0 10px; color: #c3cbc0; font-size: 12px; }
+.import-options .check { display: inline-flex; align-items: center; gap: 6px; }
+.import-table { max-height: 42vh; overflow: auto; }
+.roster-import .summary-meta { margin: 14px 0 8px; }
+.roster-import .summary-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.roster-import .editor-actions { margin-top: 12px; }

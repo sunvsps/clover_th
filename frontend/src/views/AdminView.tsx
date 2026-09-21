@@ -6,7 +6,7 @@ import { formatDateTime } from "../lib/dates";
 import { usePolling } from "../hooks/usePolling";
 import { memberName, type ViewProps } from "../lib/types";
 
-type Props = Omit<ViewProps, "isAdmin"> & { reloadData: () => Promise<void> };
+type Props = Omit<ViewProps, "isAdmin">;
 type Section = "members" | "jobs" | "activities" | "layout" | "rounds" | "notifications" | "audit";
 
 export default function AdminView({ isThai, me, data, reloadData, notify, notifyError }: Props) {

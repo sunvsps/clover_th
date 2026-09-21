@@ -282,17 +282,17 @@ function App() {
         <>
           {view === "auction" && (
             <div className="feature-content">
-              <AuctionView isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} />
+              <AuctionView isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} reloadData={loadData} />
             </div>
           )}
           {view === "calendar" && (
             <div className="feature-content">
-              <WeeklySchedule isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} />
+              <WeeklySchedule isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} reloadData={loadData} />
             </div>
           )}
           {view === "teams" && (
             <div className="feature-content wide">
-              <TeamPlanner isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} />
+              <TeamPlanner isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} reloadData={loadData} />
             </div>
           )}
           {view === "admin" && isAdmin && (

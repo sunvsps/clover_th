@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { BarChart3, Copy, Eraser, Eye, GripVertical, History, RotateCcw, Search, Users, X, Zap } from "lucide-react";
+import { BarChart3, Copy, Eraser, Eye, FileSpreadsheet, GripVertical, History, RotateCcw, Search, Users, X, Zap } from "lucide-react";
 import { ApiError, planner, type Plan, type ScheduleEvent } from "../api";
 import { findJob, jobStyle } from "../data/guild";
 import { addDays, formatDateTime, formatDay, startOfWeek, todayKey, weekDayShort } from "../lib/dates";
 import { usePolling } from "../hooks/usePolling";
 import { memberName, type ViewProps } from "../lib/types";
 import JobChart from "./JobChart";
+import RosterImport from "./RosterImport";
+import { formatCp, useGearScores } from "../lib/gearScores";
 
 const DRAG_KEY = "text/guild-member";
 
@@ -21,7 +23,15 @@ function useNow(intervalMs: number) {
 type Occurrence = { event: ScheduleEvent; dateKey: string };
 type Placement = Plan["rooms"][number]["teams"][number]["placements"][number];
 
-export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError }: ViewProps) {
+export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError, reloadData }: ViewProps) {
+  const { scoreOf, store: gearStore } = useGearScores();
+  const [importOpen, setImportOpen] = useState(false);
+  const cpOf = (memberId: string) => {
+    const member = data.membersById.get(memberId);
+    return member ? scoreOf(member.ign)?.cp ?? null : null;
+  };
+  const teamCp = (memberIds: string[]) => memberIds.reduce((total, memberId) => total + (cpOf(memberId) ?? 0), 0);
+  const cpCoverage = Object.keys(gearStore).length;
   const plannerEvents = useMemo(() => {
     const plannerActivities = new Set(data.activities.filter((activity) => activity.hasPlanner).map((activity) => activity.id));
     return data.events.filter((event) => plannerActivities.has(event.activityId));
@@ -127,7 +137,8 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
       lines.push(`[${room.name}]`);
       room.teams.forEach((team) => {
         if (!team.placements.length) return;
-        lines.push(`  ${team.name}: ${[...team.placements].sort((a, b) => a.slot - b.slot).map((p) => `${memberName(data, p.memberId)} (${jobOf(p.memberId)?.label ?? "-"})`).join(", ")}`);
+        const total = teamCp(team.placements.map((p) => p.memberId));
+        lines.push(`  ${team.name}${total ? ` [CP ${formatCp(total)}]` : ""}: ${[...team.placements].sort((a, b) => a.slot - b.slot).map((p) => `${memberName(data, p.memberId)} (${jobOf(p.memberId)?.label ?? "-"}${cpOf(p.memberId) !== null ? `, ${formatCp(cpOf(p.memberId)!)}` : ""})`).join(", ")}`);
       });
       lines.push("");
     });
@@ -162,6 +173,7 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
       >
         {canEdit && <GripVertical size={12} className="grip" />}
         <span className="chip-name">{member?.ign ?? memberName(data, memberId)}</span>
+        {cpOf(memberId) !== null && <small className="chip-cp">{formatCp(cpOf(memberId)!)}</small>}
         {placement?.source === "AUTO_BACKFILL" && <Zap size={11} className="chip-flag" />}
         {withdrawn && <small className="chip-warn">{placement.regStatus === "LEAVE" ? (isThai ? "ลา" : "left") : placement.regStatus === "WAITLISTED" ? (isThai ? "สำรอง" : "wait") : isThai ? "ไม่ลง" : "none"}</small>}
         {canEdit && placement && (
@@ -197,6 +209,8 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
       </div>
     );
   };
+
+  const importDialog = importOpen && canEdit ? <RosterImport isThai={isThai} data={data} notify={notify} notifyError={notifyError} reloadData={reloadData} onClose={() => setImportOpen(false)} /> : null;
 
   if (!selected) {
     return (
@@ -235,6 +249,9 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
           </button>
           {canEdit && (
             <>
+              <button type="button" className="copy-button" onClick={() => setImportOpen(true)}>
+                <FileSpreadsheet size={14} /> {isThai ? "นำเข้า CSV (รายชื่อ + CP)" : "Import CSV (roster + CP)"}
+              </button>
               <button
                 type="button"
                 className="copy-button"
@@ -280,6 +297,7 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
               </em>
             )}
             {started && <em className="warn">{isThai ? "กิจกรรมเริ่มแล้ว" : "started"}</em>}
+            {cpCoverage > 0 && <em title={isThai ? "CP มาจากไฟล์ CSV ที่นำเข้าในเบราว์เซอร์นี้" : "CP comes from the CSV imported in this browser"}>CP {cpCoverage} {isThai ? "คน" : "members"}</em>}
           </span>
         )}
       </div>
@@ -350,6 +368,7 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
                       {room.name}
                       <small>
                         {placedInRoom}/{room.capacity} · {room.teams.length} {isThai ? "ทีม" : "teams"}
+                        {placedInRoom > 0 && cpCoverage > 0 && ` · CP ${formatCp(teamCp(room.teams.flatMap((team) => team.placements.map((p) => p.memberId))))}`}
                       </small>
                     </h3>
                     <div className="subteam-grid">
@@ -370,6 +389,7 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
                               <strong>{team.name}</strong>
                               <small>
                                 {team.placements.length}/{team.size}
+                                {team.placements.length > 0 && cpCoverage > 0 && <b className="team-cp"> · CP {formatCp(teamCp(team.placements.map((p) => p.memberId)))}</b>}
                               </small>
                             </div>
                             <div className="subteam-slots">
@@ -398,6 +418,7 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
           </div>
         </>
       )}
+      {importDialog}
     </section>
   );
 }
