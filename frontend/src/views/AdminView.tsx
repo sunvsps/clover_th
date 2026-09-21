@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Activity as ActivityIcon, Bell, Check, Gavel, LayoutGrid, Palette, Pencil, Plus, RefreshCw, ScrollText, Settings, Trash2, UserCog, X } from "lucide-react";
-import { admin, auctions, planner, type AdminMember, type ItemCategory, type Job, type Layout, type RoundSummary } from "../api";
-import { categoryLabel, findJob, itemCategories, jobStyle } from "../data/guild";
+import { Activity as ActivityIcon, Bell, Check, LayoutGrid, Palette, Pencil, Plus, RefreshCw, ScrollText, Settings, Trash2, UserCog, X } from "lucide-react";
+import { admin, planner, type AdminMember, type Job, type Layout } from "../api";
+import { findJob, jobStyle } from "../data/guild";
 import { formatDateTime } from "../lib/dates";
 import { usePolling } from "../hooks/usePolling";
 import { memberName, type ViewProps } from "../lib/types";
 
 type Props = Omit<ViewProps, "isAdmin">;
-type Section = "members" | "jobs" | "activities" | "layout" | "rounds" | "notifications" | "audit";
+type Section = "members" | "jobs" | "activities" | "layout" | "notifications" | "audit";
 
 export default function AdminView({ isThai, me, data, reloadData, notify, notifyError }: Props) {
   const [section, setSection] = useState<Section>("members");
@@ -16,7 +16,6 @@ export default function AdminView({ isThai, me, data, reloadData, notify, notify
     { id: "jobs", label: isThai ? "อาชีพ" : "Jobs", icon: <Palette size={14} /> },
     { id: "activities", label: isThai ? "กิจกรรม" : "Activities", icon: <ActivityIcon size={14} /> },
     { id: "layout", label: isThai ? "ผังทีม" : "Layouts", icon: <LayoutGrid size={14} /> },
-    { id: "rounds", label: isThai ? "ประมูล" : "Auctions", icon: <Gavel size={14} /> },
     { id: "notifications", label: isThai ? "การแจ้งเตือน" : "Notifications", icon: <Bell size={14} /> },
     { id: "audit", label: isThai ? "ประวัติระบบ" : "Audit log", icon: <ScrollText size={14} /> },
   ];
@@ -29,7 +28,7 @@ export default function AdminView({ isThai, me, data, reloadData, notify, notify
             <Settings size={13} /> ADMIN MENU / CONFIG
           </p>
           <h2>{isThai ? "ตั้งค่าแอดมิน" : "Admin config"}</h2>
-          <p>{isThai ? "สมาชิกมาจากบอท Discord เท่านั้น (เพิ่ม/ให้สิทธิ์แอดมินไม่ได้จากหน้านี้) แก้ชื่อ อาชีพ ปิดใช้งาน ตั้งค่ากิจกรรม ผังทีม และจัดการรอบประมูลได้ที่นี่" : "Members come from the Discord bot only (no add or admin-grant here). Edit names and jobs, deactivate, configure activities and layouts, and run auction rounds."}</p>
+          <p>{isThai ? "สมาชิกมาจากบอท Discord เท่านั้น (เพิ่ม/ให้สิทธิ์แอดมินไม่ได้จากหน้านี้) แก้ชื่อ อาชีพ ปิดใช้งาน ตั้งค่ากิจกรรม และผังทีมได้ที่นี่" : "Members come from the Discord bot only (no add or admin-grant here). Edit names and jobs, deactivate, and configure activities and layouts here."}</p>
         </div>
       </div>
       <div className="admin-tabs">
@@ -43,7 +42,6 @@ export default function AdminView({ isThai, me, data, reloadData, notify, notify
       {section === "jobs" && <JobsSection key={data.jobs.map((job) => `${job.id}:${job.label}:${job.color}`).join("|")} {...shared} />}
       {section === "activities" && <ActivitiesSection {...shared} />}
       {section === "layout" && <LayoutSection {...shared} />}
-      {section === "rounds" && <RoundsSection {...shared} />}
       {section === "notifications" && <NotificationsSection {...shared} />}
       {section === "audit" && <AuditSection {...shared} />}
     </section>
@@ -414,201 +412,6 @@ function LayoutSection({ isThai, data, reloadData, notify, notifyError }: Props)
           <Check size={13} /> {isThai ? "บันทึกผัง" : "Save layout"}
         </button>
       </div>
-    </div>
-  );
-}
-
-// ---------- Rounds ----------
-type RoundRow = RoundSummary["rounds"][number];
-function RoundsSection({ isThai, data, notify, notifyError }: Props) {
-  const { data: list, refresh } = usePolling(() => auctions.rounds(), 5000, []);
-  const rounds = list?.rounds ?? [];
-  const [busy, setBusy] = useState<number | null>(null);
-  const [form, setForm] = useState<{ type: "LIVE_CLAIM" | "QUEUE_RANKED"; name: string; durationSec: number; winCap: number; items: { name: string; category: ItemCategory; rarity: string }[] }>({ type: "LIVE_CLAIM", name: "", durationSec: 300, winCap: 5, items: [] });
-  const [itemDraft, setItemDraft] = useState<{ name: string; category: ItemCategory; rarity: string }>({ name: "", category: "GEAR", rarity: "" });
-  const [results, setResults] = useState<Record<number, Awaited<ReturnType<typeof auctions.results>>>>({});
-
-  async function run(id: number | null, action: () => Promise<unknown>, message: string) {
-    setBusy(id ?? -1);
-    try {
-      await action();
-      notify(message);
-      await refresh();
-    } catch (error) {
-      notifyError(error);
-    } finally {
-      setBusy(null);
-    }
-  }
-  const create = (event: FormEvent) => {
-    event.preventDefault();
-    void run(null, () => admin.createRound({ type: form.type, name: form.name.trim(), durationSec: form.durationSec, winCap: form.type === "LIVE_CLAIM" ? form.winCap : undefined, items: form.items.map((item) => ({ name: item.name, category: item.category, rarity: item.rarity || null })) }), isThai ? "สร้างรอบ (ร่าง) แล้ว" : "Draft round created.").then(() => setForm({ ...form, name: "", items: [] }));
-  };
-  const loadResults = (id: number) => auctions.results(id).then((result) => setResults((current) => ({ ...current, [id]: result }))).catch(notifyError);
-  const statusLabel = (round: RoundRow) => (round.status === "OPEN" ? (isThai ? "เปิดอยู่" : "Open") : round.status === "CLOSED" ? (isThai ? "ปิดแล้ว" : "Closed") : round.status === "DRAFT" ? (isThai ? "ร่าง" : "Draft") : isThai ? "ยกเลิก" : "Cancelled");
-  const queueCategoriesOnly: ItemCategory[] = ["GEAR", "CARD", "RELIC"];
-
-  return (
-    <div className="admin-section rounds-section">
-      <form className="round-form" onSubmit={create}>
-        <p className="eyebrow">
-          <Gavel size={11} /> {isThai ? "สร้างรอบใหม่" : "NEW ROUND"}
-        </p>
-        <div className="offer-fields">
-          <label>
-            <span>{isThai ? "ประเภท" : "Type"}</span>
-            <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as typeof form.type, items: form.items.filter((item) => event.target.value === "LIVE_CLAIM" || queueCategoriesOnly.includes(item.category)) })}>
-              <option value="LIVE_CLAIM">{isThai ? "กดจองสด (ใครก่อนได้ก่อน)" : "Live claim (first click wins)"}</option>
-              <option value="QUEUE_RANKED">{isThai ? "จัดสรรตามคิว (Gear/Card/Relic)" : "Queue allocation (Gear/Card/Relic)"}</option>
-            </select>
-          </label>
-          <label className="grow">
-            <span>{isThai ? "ชื่อรอบ" : "Round name"}</span>
-            <input type="text" value={form.name} maxLength={60} placeholder={isThai ? "เช่น ประมูลหลัง Guild League 24/9" : "e.g. Post Guild League 24/9"} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-          </label>
-          <label>
-            <span>{isThai ? "นาที" : "Minutes"}</span>
-            <input type="number" min={1} max={120} value={form.durationSec / 60} onChange={(event) => setForm({ ...form, durationSec: Math.max(1, Number(event.target.value)) * 60 })} />
-          </label>
-          {form.type === "LIVE_CLAIM" && (
-            <label>
-              <span>{isThai ? "สูงสุด/คน" : "Cap"}</span>
-              <input type="number" min={1} max={20} value={form.winCap} onChange={(event) => setForm({ ...form, winCap: Math.max(1, Number(event.target.value)) })} />
-            </label>
-          )}
-        </div>
-        <div className="offer-fields item-adder">
-          <label className="grow">
-            <span>{isThai ? "ไอเท็ม" : "Item"}</span>
-            <input type="text" value={itemDraft.name} maxLength={80} placeholder={isThai ? "ชื่อไอเท็ม" : "Item name"} onChange={(event) => setItemDraft({ ...itemDraft, name: event.target.value })} />
-          </label>
-          <label>
-            <span>{isThai ? "หมวด" : "Category"}</span>
-            <select value={itemDraft.category} onChange={(event) => setItemDraft({ ...itemDraft, category: event.target.value as ItemCategory })}>
-              {(form.type === "LIVE_CLAIM" ? itemCategories : queueCategoriesOnly).map((category) => (
-                <option value={category} key={category}>
-                  {categoryLabel(category, isThai)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{isThai ? "ระดับ" : "Rarity"}</span>
-            <input type="text" value={itemDraft.rarity} maxLength={20} placeholder="—" onChange={(event) => setItemDraft({ ...itemDraft, rarity: event.target.value })} />
-          </label>
-          <button
-            type="button"
-            className="copy-button"
-            disabled={!itemDraft.name.trim()}
-            onClick={() => {
-              setForm({ ...form, items: [...form.items, { ...itemDraft, name: itemDraft.name.trim() }] });
-              setItemDraft({ ...itemDraft, name: "" });
-            }}
-          >
-            <Plus size={12} /> {isThai ? "เพิ่มไอเท็ม" : "Add item"}
-          </button>
-        </div>
-        {form.items.length > 0 && (
-          <ul className="item-list">
-            {form.items.map((item, index) => (
-              <li key={index}>
-                <span className="cat-pill">{categoryLabel(item.category, isThai)}</span> {item.name} {item.rarity && <small>· {item.rarity}</small>}
-                <button type="button" className="chip-tool remove" aria-label="Remove" onClick={() => setForm({ ...form, items: form.items.filter((_, i) => i !== index) })}>
-                  <X size={11} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="editor-actions">
-          <button type="submit" className="admin-button" disabled={!form.name.trim() || form.items.length === 0 || busy !== null}>
-            <Plus size={13} /> {isThai ? "สร้างรอบ (ร่าง)" : "Create draft round"}
-          </button>
-        </div>
-      </form>
-
-      <div className="admin-table-wrap">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>{isThai ? "ชื่อ" : "Name"}</th>
-              <th>{isThai ? "ประเภท" : "Type"}</th>
-              <th>{isThai ? "ไอเท็ม" : "Items"}</th>
-              <th>{isThai ? "สถานะ" : "Status"}</th>
-              <th>{isThai ? "เวลา" : "Window"}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rounds.map((round) => (
-              <tr key={round.id}>
-                <td className="mono">{round.id}</td>
-                <td>
-                  <strong>{round.name}</strong>
-                </td>
-                <td>{round.type === "LIVE_CLAIM" ? (isThai ? "กดจองสด" : "Live claim") : isThai ? "ตามคิว" : "Queue"}</td>
-                <td>{round.itemCount}</td>
-                <td>
-                  <em className={`tag status-${round.status.toLowerCase()}`}>{statusLabel(round)}</em>
-                </td>
-                <td className="mono">{round.opensAt ? `${formatDateTime(round.opensAt, isThai)} → ${round.closesAt ? formatDateTime(round.closesAt, isThai) : ""}` : `${round.durationSec / 60} min`}</td>
-                <td className="row-actions">
-                  {round.status === "DRAFT" && (
-                    <>
-                      <button type="button" className="admin-button" disabled={busy !== null} onClick={() => void run(round.id, () => admin.startRound(round.id, {}), isThai ? "เริ่มรอบแล้ว (นับถอยหลัง 3 วิ)" : "Round started (3s countdown).")}>
-                        {isThai ? "เริ่ม" : "Start"}
-                      </button>
-                      <button type="button" className="copy-button danger" disabled={busy !== null} onClick={() => void run(round.id, () => admin.cancelRound(round.id), isThai ? "ยกเลิกรอบแล้ว" : "Round cancelled.")}>
-                        {isThai ? "ยกเลิก" : "Cancel"}
-                      </button>
-                    </>
-                  )}
-                  {round.status === "OPEN" && (
-                    <button type="button" className="copy-button danger" disabled={busy !== null} onClick={() => void run(round.id, () => admin.closeRound(round.id), isThai ? "ปิดรอบแล้ว" : "Round closed.")}>
-                      {isThai ? "ปิดรอบตอนนี้" : "Close now"}
-                    </button>
-                  )}
-                  {round.status === "CLOSED" && (
-                    <button type="button" className="copy-button" onClick={() => void loadResults(round.id)}>
-                      {isThai ? "ดูผล" : "Results"}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {rounds.length === 0 && (
-              <tr>
-                <td colSpan={7} className="empty-search">
-                  {isThai ? "ยังไม่มีรอบ" : "No rounds yet."}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {Object.values(results).map((result) => (
-        <div className="results-card" key={result.roundId}>
-          <div className="pool-title">
-            <strong>
-              {isThai ? "ผลรอบ" : "Results of round"} #{result.roundId}
-            </strong>
-            <span>{result.leftoverRoundId != null ? (isThai ? `ของเหลือถูกสร้างเป็นร่างรอบ #${result.leftoverRoundId}` : `Leftovers drafted as round #${result.leftoverRoundId}`) : isThai ? "ไม่มีของเหลือ" : "No leftovers"}</span>
-          </div>
-          <ul className="history-list">
-            {result.items.map((item) => (
-              <li key={item.id} className={item.winner ? "taken" : "no-taker"}>
-                <span className="history-item">
-                  <strong>{item.name}</strong>
-                  <small>{categoryLabel(item.category, isThai)}</small>
-                </span>
-                <span className="history-member">{item.winner ? memberName(data, item.winner.memberId) : "—"}</span>
-                <span className={`history-result ${item.winner ? "taken" : "no-taker"}`}>{item.winner ? (item.winner.queuePos != null ? `#${item.winner.queuePos}` : isThai ? "ได้ของ" : "Won") : isThai ? "ไม่มีผู้ได้" : "No winner"}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
     </div>
   );
 }

@@ -32,7 +32,7 @@ type State = {
   seq: number;
 };
 
-const STORE_KEY = "clover.mock.v1";
+const STORE_KEY = "clover.mock.v2"; // bumped when the seed changes so stale demo state is discarded
 const SESSION_KEY = "clover.mock.session";
 
 class MockError extends Error {

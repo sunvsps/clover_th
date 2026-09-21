@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Check, ChevronDown, CircleHelp, Crown, Hash, LogOut, Package, Settings, Users, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, CircleHelp, Crown, Hash, ListOrdered, LogOut, Package, Settings, Users, X } from "lucide-react";
 import "./App.css";
 import "./features.css";
 import { auth, isMockMode, mockLogin, mockMembers, resetMock, roster, setUnauthorizedHandler, type Me } from "./api";
 import { findJob, jobStyle } from "./data/guild";
 import type { GuildData } from "./lib/types";
 import { describeError } from "./api/errors";
-import AuctionView from "./views/AuctionView";
+import PageAuctionView from "./views/PageAuctionView";
 import AdminView from "./views/AdminView";
 import WeeklySchedule from "./components/WeeklySchedule";
 import TeamPlanner from "./components/TeamPlanner";
 
-type GuildView = "auction" | "calendar" | "teams" | "admin";
-const VIEWS: GuildView[] = ["auction", "calendar", "teams", "admin"];
+type GuildView = "auction" | "auctionQueue" | "calendar" | "teams" | "admin";
+const VIEWS: GuildView[] = ["auction", "auctionQueue", "calendar", "teams", "admin"];
 
 function viewFromHash(): GuildView {
   const hash = window.location.hash.replace("#", "") as GuildView;
@@ -215,6 +215,9 @@ function App() {
         <button className={view === "auction" ? "active" : ""} type="button" onClick={() => setActiveView("auction")}>
           <Package size={15} /> {isThai ? "ประมูลไอเท็ม" : "Auction"}
         </button>
+        <button className={view === "auctionQueue" ? "active" : ""} type="button" onClick={() => setActiveView("auctionQueue")}>
+          <ListOrdered size={15} /> {isThai ? "คิวประมูล" : "Auction queue"}
+        </button>
         <button className={view === "calendar" ? "active" : ""} type="button" onClick={() => setActiveView("calendar")}>
           <CalendarDays size={15} /> {isThai ? "ตารางกิจกรรม" : "Schedule"}
         </button>
@@ -360,7 +363,12 @@ function App() {
         <>
           {view === "auction" && (
             <div className="feature-content">
-              <AuctionView isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} reloadData={loadData} />
+              <PageAuctionView isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} reloadData={loadData} tab="board" onGoToBoard={() => setActiveView("auction")} />
+            </div>
+          )}
+          {view === "auctionQueue" && (
+            <div className="feature-content">
+              <PageAuctionView isThai={isThai} me={me} isAdmin={isAdmin} data={data} notify={notify} notifyError={notifyError} reloadData={loadData} tab="queue" onGoToBoard={() => setActiveView("auction")} />
             </div>
           )}
           {view === "calendar" && (

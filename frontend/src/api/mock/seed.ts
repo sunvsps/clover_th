@@ -1,27 +1,34 @@
 // Seed data for the in-browser mock backend. Mirrors backend/prisma/seed.ts plus the guild roster.
+// Class names and colours follow the in-game class list (IMG_2028-2030) so a guild CSV export matches every row.
 export const seedJobs = [
   { id: 1, label: "High Priest", color: "#5cb454" },
-  { id: 2, label: "Knight", color: "#e04e4b" },
-  { id: 3, label: "Wizard", color: "#3a95e8" },
+  { id: 2, label: "Lord Knight", color: "#e04e4b" },
+  { id: 3, label: "High Wizard", color: "#3a95e8" },
   { id: 4, label: "Sniper", color: "#e3b53c" },
-  { id: 5, label: "Gunslinger", color: "#b8682c" },
-  { id: 6, label: "ดรูอิด", color: "#3fb3a1" },
-  { id: 7, label: "Assassin", color: "#9a6fdc" },
+  { id: 5, label: "Night Walker", color: "#b8682c" },
+  { id: 6, label: "อาลิเทีย", color: "#3fb3a1" },
+  { id: 7, label: "Assassin Cross", color: "#9a6fdc" },
   { id: 8, label: "Paladin", color: "#bf3f35" },
+  { id: 9, label: "Whitesmith", color: "#ea6f22" },
+  { id: 10, label: "Champion", color: "#9ccc3c" },
+  { id: 11, label: "Rebel", color: "#7a8fb5" },
 ];
 
 export const seedRoster: Record<number, string[]> = {
-  1: ["zearthz", "หมัดมังคุด", "ลูกแกะผู้หลงทาง", "ChonYa", "Czz", "Free_Kill", "DuschMill", "Lerp", "JeeNz", "l333l", "ตัวไก่กุ๊กๆ", "Eii3", "Tofus", "แมวกระเป๋า", "lnwสงคราม", "Booooo", "เสีEวค่ะXลวงMา", "Mirabi", "ขนมปังปิ้ง", "น้องแมวส้ม/หมัด", "T A Y"],
-  2: ["Mimayu", "Claude", "เฟซssssss", "หมูอบเนย", "ทะลวงรูโบ๋เบ๋", "เบลล์_อาร์", "อารยา", "Desk", "คนหลงทาง", "ThanaKetkaew", "กขคง", "LittelME"],
-  3: ["Gantzping", "พยูนไม่ได้ฆ่า", "CoolTM", "V16", "BXNGBXNG", "เสือจ้า", "55XxX55"],
-  4: ["มันกะเย", "o0Sudting0o", "น้องดอกบัวตอง", "Kanade", "BeN888", "จิวยี่"],
-  5: ["Yiren", "Nuririn", "วานิลาครีมชมพู", "Apori", "Nim", "BTราชามาร", "Thornveil", "Gugora", "HANIRUKA", "-nara-", "Piraru", "มะงึก", "เสือดำ", "-จอมมารบุญ-", "TYESO"],
-  6: ["COSMOx", "อาเนียจัง", "Halseyz", "lSephirothl", "Judazz", "SunnylnwZa"],
-  7: ["HuM", "HoMies58", "ooMrmrakoo", "หอยขม", "SweetLove"],
-  8: ["MaMaMeaw", "Muck", "ตีไปเถอะ", "IAMAHERO"],
+  1: ["zearthz", "ลูกแกะผู้หลงทาง", "Czz", "Free_Kill", "DusChMill", "แมวกระเป๋า", "หมัดมังคุด", "Mirabi", "เสีEวค่ะXลวงMา", "GuGa", "ตาแกะ", "Booooo", "TaDa", "l333l", "JeeNz", "Eii3", "TAY", "วู้ววหูววว", "lnwสงคราม", "ChonYa", "คณะสงฆ์ไทย", "ขนมปังปิ้งง", "ตัวไก่กุ๊กๆ", "Lerp", "Tofus"],
+  2: ["Mimayuu", "lwชsssss", "Claude", "Chell", "MufasA", "มาให้แทงสะดีๆ", "ทะลวงรูโบ๋เบ๋", "แล้วแต่อะ", "LittelME"],
+  3: ["Gantzping", "ขออนุญาตมาดดด", "v16", "Yumeiiko", "เสือจ้า", "BXNGBXNG", "พยูนไม่ได้ฆ่า", "55XxX55"],
+  4: ["มันกะเย", "oOSudtingOo", "BeN888", "Chaplin", "Kanade", "Bosu"],
+  5: ["Nuririn", "TYESO", "Apori", "ปุ๋ง-ปุ๋งงง", "Yiren", "-จoมมๅรบุญ-", "Psychology", "วานิลาครีมชมพู", "เสือดํา", "Nim", "Dopeboyz", "จิวยี่", "PENNYWISEz", "SerizawaZ", "-nara-", "Gugora", "MERRIN", "มะงึก", "Piraru", "BTราชามาร", "HANIRUKA"],
+  6: ["COSMOx", "SunnyInwZa", "ฮๅโย่ววว", "อาเนียจัง", "Halseyz", "CoolTM", "Judazz", "lSephirothl"],
+  7: ["HuM", "หอยขม", "STELLAomg!", "ooMrmrakoo", "HoMies58", "กะปุ๋ง", "SweetLove"],
+  8: ["กขคง", "คนหลงทาง", "หมูอบเนย", "OriginI", "ThanaKetkaew", "เบลล์_อาร์", "oาsยา", "Desk"],
+  9: ["น้องดอกบัวตอง", "IAMAHERO", "MaMaMeaw", "Muck", "ตีไปเถอะ"],
+  10: ["Sad-Bang", "น้องแมวส้ม"],
+  11: ["Thornveil"],
 };
 /** Demo admins (guild leadership). */
-export const seedAdmins = ["zearthz", "COSMOx", "Mimayu", "Gantzping"];
+export const seedAdmins = ["zearthz", "COSMOx", "Mimayuu", "Gantzping"];
 
 export const seedActivities = [
   { id: "luminous-vale", name: "Luminous Vale" },
@@ -64,7 +71,10 @@ export const seedLayouts: Record<string, { key: string; name: string; teams: num
     { key: "main", name: "Main", teams: 12 },
     { key: "sub", name: "Sub", teams: 18 },
   ],
-  "polarity-zone": [{ key: "default", name: "Main", teams: 10 }],
+  "polarity-zone": [
+    { key: "a", name: "ทีม A", teams: 8 },
+    { key: "b", name: "ทีม B", teams: 8 },
+  ],
   "mirror-world": [{ key: "default", name: "Main", teams: 8 }],
   "castle-siege": [{ key: "default", name: "Main", teams: 8 }],
 };

@@ -1,11 +1,15 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, Check, FileSpreadsheet, Upload, X } from "lucide-react";
-import { admin, type Job } from "../api";
+import { admin, registrations, type Job } from "../api";
 import { jobStyle } from "../data/guild";
 import { formatCp, normalizeIgn, parseGuildCsv, useGearScores, type CsvRow } from "../lib/gearScores";
 import type { ViewProps } from "../lib/types";
 
-type Props = Pick<ViewProps, "isThai" | "data" | "notify" | "notifyError" | "reloadData"> & { onClose: () => void };
+type Props = Pick<ViewProps, "isThai" | "data" | "notify" | "notifyError" | "reloadData"> & {
+  onClose: () => void;
+  /** When set, matched members are also registered as reserves for this occurrence so they show up as draggable cards right away. */
+  occurrence?: { eventId: string; date: string };
+};
 
 /** Known in-game class names that map onto an existing job label when no exact label exists. */
 const CLASS_ALIASES: Record<string, string[]> = {
@@ -13,16 +17,19 @@ const CLASS_ALIASES: Record<string, string[]> = {
   "High Wizard": ["Wizard"],
   "Assassin Cross": ["Assassin"],
   "High Priest": ["Priest", "พระ"],
+  "Night Walker": ["Gunslinger"],
+  อาลิเทีย: ["ดรูอิด", "Alitheia"],
   Sniper: ["ธนู"],
 };
 const PALETTE = ["#6c8cff", "#ff8a3d", "#22cc99", "#e455a5", "#f2d24b", "#8fd35c", "#5fd0e8", "#c58aff"];
 
-export default function RosterImport({ isThai, data, notify, notifyError, reloadData, onClose }: Props) {
+export default function RosterImport({ isThai, data, notify, notifyError, reloadData, onClose, occurrence }: Props) {
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [fileName, setFileName] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
   const [createJobs, setCreateJobs] = useState(true);
   const [updateJobs, setUpdateJobs] = useState(true);
+  const [registerReserves, setRegisterReserves] = useState(true);
   const [busy, setBusy] = useState(false);
   const { merge } = useGearScores();
 
@@ -93,8 +100,22 @@ export default function RosterImport({ isThai, data, notify, notifyError, reload
           }
         }
       }
+      // 4. Register matched members as reserves for the current occurrence so they show up as draggable cards right away.
+      let registered = 0;
+      if (registerReserves && occurrence) {
+        for (const { member } of analysis.found) {
+          if (!member) continue;
+          await registrations.set(occurrence.eventId, occurrence.date, member.id, "JOINED");
+          registered += 1;
+        }
+      }
+
       await reloadData();
-      notify(isThai ? `นำเข้าแล้ว: CP ${analysis.withCp.length} คน · เปลี่ยนอาชีพ ${changed} คน · ไม่พบในระบบ ${analysis.notFound.length} คน` : `Imported: CP for ${analysis.withCp.length}, job changes ${changed}, not on roster ${analysis.notFound.length}.`);
+      notify(
+        isThai
+          ? `นำเข้าแล้ว: CP ${analysis.withCp.length} คน · เปลี่ยนอาชีพ ${changed} คน${registered ? ` · ลงทะเบียนเป็นตัวสำรอง ${registered} คน` : ""} · ไม่พบในระบบ ${analysis.notFound.length} คน`
+          : `Imported: CP for ${analysis.withCp.length}, job changes ${changed}${registered ? `, ${registered} registered as reserves` : ""}, not on roster ${analysis.notFound.length}.`,
+      );
       onClose();
     } catch (error) {
       notifyError(error);
@@ -153,6 +174,12 @@ export default function RosterImport({ isThai, data, notify, notifyError, reload
               {analysis.missingClasses.length > 0 && (
                 <label className="check">
                   <input type="checkbox" checked={createJobs} onChange={(event) => setCreateJobs(event.target.checked)} /> {isThai ? "สร้างอาชีพที่ยังไม่มี" : "Create missing jobs"}: {analysis.missingClasses.join(", ")}
+                </label>
+              )}
+              {occurrence && (
+                <label className="check">
+                  <input type="checkbox" checked={registerReserves} onChange={(event) => setRegisterReserves(event.target.checked)} />
+                  {isThai ? "ลงทะเบียนคนที่พบเป็นตัวสำรองของกิจกรรมนี้ (ให้เป็นการ์ดลากจัดทีมได้ทันที)" : "Register matched members as reserves for this occurrence (so they appear as draggable cards)"}
                 </label>
               )}
             </div>

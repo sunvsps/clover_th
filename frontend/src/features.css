@@ -549,6 +549,33 @@
 .roster-import .summary-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .roster-import .editor-actions { margin-top: 12px; }
 
+/* ---------- Regular parties ---------- */
+.member-chip.has-party { border-left: 4px solid var(--party-color, transparent); }
+.member-chip.party-mate { outline: 2px dashed var(--party-color, #f3f5f1); outline-offset: 1px; box-shadow: 0 0 0 3px rgba(255, 255, 255, .12); }
+.party-hint { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; color: #ffe08a; font-style: normal; font-size: 11px; }
+.party-swatch { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; }
+.roster-import .summary-meta .warn { color: #ffb27a; }
+
+.party-board { width: min(1180px, 100%); }
+.party-board-layout { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 16px; align-items: start; margin-top: 14px; }
+.party-board .member-pool { max-height: 64vh; }
+.party-pool-list { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.party-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; max-height: 64vh; overflow: auto; padding-right: 2px; }
+.party-slot-card { padding: 9px; border: 1px dashed #3a433a; background: #1b201c; border-radius: 8px; transition: border-color .15s, box-shadow .15s, background .15s; cursor: pointer; }
+.party-slot-card.empty { opacity: .6; }
+.party-slot-card.hover, .party-slot-card:hover { border-color: var(--party-color, #b9e86d); background: #1f2a1d; box-shadow: 0 0 0 2px color-mix(in srgb, var(--party-color, #b9e86d) 35%, transparent); }
+.party-slot-title { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; }
+.party-slot-title strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-slot-title small { color: #7c8879; font: 10px 'DM Mono', monospace; }
+.party-slot-members { display: flex; flex-direction: column; gap: 5px; min-height: 34px; }
+.party-slot-empty-hint { margin: 0; padding: 8px 0; color: #55604f; text-align: center; font-size: 11px; }
+.party-slot-add { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 60px; padding: 9px; color: #8fa088; background: transparent; border: 1px dashed #3a433a; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.party-slot-add:hover { color: #e8eee6; border-color: #b9e86d; background: #1f2a1d; }
+@media (max-width: 860px) {
+  .party-board-layout { grid-template-columns: 1fr; }
+  .party-board .member-pool { max-height: 40vh; }
+}
+
 /* ---------- Demo (mock API) mode ---------- */
 .demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 6px; padding: 9px 14px; color: #e8dcb0; background: #2d2618; border: 1px dashed #7a6a3a; border-radius: 8px; font-size: 12px; }
 .demo-banner strong { color: #ffe08a; }

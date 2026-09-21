@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { BarChart3, Copy, Eraser, Eye, FileSpreadsheet, GripVertical, History, RotateCcw, Search, Users, X, Zap } from "lucide-react";
+import { BarChart3, Copy, Eraser, Eye, FileSpreadsheet, GripVertical, History, RotateCcw, Search, Users, Users2, X, Zap } from "lucide-react";
 import { ApiError, planner, type Plan, type ScheduleEvent } from "../api";
 import { findJob, jobStyle } from "../data/guild";
 import { addDays, formatDateTime, formatDay, startOfWeek, todayKey, weekDayShort } from "../lib/dates";
@@ -7,7 +7,9 @@ import { usePolling } from "../hooks/usePolling";
 import { memberName, type ViewProps } from "../lib/types";
 import JobChart from "./JobChart";
 import RosterImport from "./RosterImport";
-import { formatCp, useGearScores } from "../lib/gearScores";
+import PartyBoard from "./PartyBoard";
+import { formatCp, normalizeIgn, useGearScores } from "../lib/gearScores";
+import { useParties } from "../lib/parties";
 
 const DRAG_KEY = "text/guild-member";
 
@@ -25,7 +27,9 @@ type Placement = Plan["rooms"][number]["teams"][number]["placements"][number];
 
 export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError, reloadData }: ViewProps) {
   const { scoreOf, store: gearStore } = useGearScores();
+  const { partyOf } = useParties();
   const [importOpen, setImportOpen] = useState(false);
+  const [partyBoardOpen, setPartyBoardOpen] = useState(false);
   const cpOf = (memberId: string) => {
     const member = data.membersById.get(memberId);
     return member ? scoreOf(member.ign)?.cp ?? null : null;
@@ -80,6 +84,19 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
   const startsAt = plan?.startsAt ? Date.parse(plan.startsAt) : null;
   const started = startsAt !== null && startsAt <= now;
 
+  const memberIdByIgn = useMemo(() => new Map(data.members.map((member) => [normalizeIgn(member.ign), member.id])), [data.members]);
+  const partyOfMember = (memberId: string) => {
+    const member = memberOf(memberId);
+    return member ? partyOf(member.ign) : undefined;
+  };
+  /** Unplaced party mates of a member, so dropping/tapping one person on a team can seat the whole party at once. */
+  const partyMatesFor = (memberId: string): string[] => {
+    const party = partyOfMember(memberId);
+    if (!party) return [];
+    return party.memberIgns.map((ign) => memberIdByIgn.get(ign)).filter((id): id is string => !!id && id !== memberId && !placedIds.has(id));
+  };
+  const pickedParty = picked ? partyOfMember(picked) : undefined;
+
   async function withPlan(action: (version: number) => Promise<unknown>, success?: string) {
     if (!plan || !selected || busy) return;
     setBusy(true);
@@ -104,6 +121,46 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
   const place = (memberId: string, teamId: number | null, slot?: number) =>
     withPlan((version) => planner.place(selected!.event.id, selected!.dateKey, memberId, { teamId, slot, expectedVersion: version }));
 
+  /**
+   * Placing a member who has a regular party seats the whole party in that team in one go, filling whatever
+   * room is left (the member goes in the exact slot dropped on, if any; mates fill the other open slots).
+   * Placements are sent one at a time with the version returned by the previous call — `place()`/`withPlan()` can't be
+   * reused in a loop here because each only refreshes the `plan` state (and its captured version) after a re-render.
+   */
+  async function placeParty(teamId: number, primaryMemberId: string, preferredSlot?: number) {
+    if (!plan || !selected || busy) return;
+    const mates = partyMatesFor(primaryMemberId);
+    const team = plan.rooms.flatMap((room) => room.teams).find((t) => t.id === teamId);
+    const freeSlots = team ? Math.max(1, team.size - team.placements.length) : 1;
+    const ids = [primaryMemberId, ...mates].slice(0, freeSlots);
+    setBusy(true);
+    let version = plan.version;
+    let placedCount = 0;
+    try {
+      for (const [index, id] of ids.entries()) {
+        const result = await planner.place(selected.event.id, selected.dateKey, id, { teamId, slot: index === 0 ? preferredSlot : undefined, expectedVersion: version });
+        version = result.version;
+        placedCount += 1;
+      }
+      await refresh();
+      if (mates.length) {
+        const skipped = mates.length - (placedCount - 1);
+        notify(
+          isThai
+            ? `จัดทั้งปาร์ตี้ลงทีมแล้ว ${placedCount} คน${skipped > 0 ? ` (เหลืออีก ${skipped} คน ทีมเต็ม)` : ""}`
+            : `Placed ${placedCount} party members${skipped > 0 ? ` (${skipped} left — team full)` : ""}.`,
+        );
+      }
+    } catch (err) {
+      await refresh();
+      notifyError(err);
+    } finally {
+      setBusy(false);
+      setPicked(null);
+      setHoverTarget(null);
+    }
+  }
+
   function startDrag(event: DragEvent<HTMLElement>, memberId: string) {
     if (!canEdit) {
       event.preventDefault();
@@ -124,10 +181,14 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
     event.stopPropagation();
     const memberId = event.dataTransfer.getData(DRAG_KEY);
     setHoverTarget(null);
-    if (memberId && canEdit) void place(memberId, teamId, slot);
+    if (!memberId || !canEdit) return;
+    if (teamId !== null && partyMatesFor(memberId).length > 0) void placeParty(teamId, memberId, slot);
+    else void place(memberId, teamId, slot);
   };
   const tapTarget = (teamId: number | null, slot?: number) => {
-    if (picked && canEdit) void place(picked, teamId, slot);
+    if (!picked || !canEdit) return;
+    if (teamId !== null && partyMatesFor(picked).length > 0) void placeParty(teamId, picked, slot);
+    else void place(picked, teamId, slot);
   };
 
   function copyPlan() {
@@ -150,10 +211,12 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
   const chip = (memberId: string, placement?: Placement) => {
     const member = memberOf(memberId);
     const withdrawn = placement && placement.regStatus !== "JOINED";
+    const party = member ? partyOfMember(memberId) : undefined;
+    const isPartyMate = !!pickedParty && picked !== memberId && party?.id === pickedParty.id;
     return (
       <div
-        className={`member-chip ${picked === memberId ? "picked" : ""} ${canEdit ? "editable" : ""} ${withdrawn ? "withdrawn" : ""} ${placement?.source === "AUTO_BACKFILL" ? "backfilled" : ""}`}
-        style={jobStyle(jobOf(memberId))}
+        className={`member-chip ${picked === memberId ? "picked" : ""} ${canEdit ? "editable" : ""} ${withdrawn ? "withdrawn" : ""} ${placement?.source === "AUTO_BACKFILL" ? "backfilled" : ""} ${party ? "has-party" : ""} ${isPartyMate ? "party-mate" : ""}`}
+        style={{ ...jobStyle(jobOf(memberId)), ...(party ? ({ "--party-color": party.color } as { [key: string]: string }) : {}) }}
         draggable={canEdit && !busy}
         key={memberId}
         onDragStart={(event) => startDrag(event, memberId)}
@@ -165,6 +228,7 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
         tabIndex={canEdit ? 0 : undefined}
         title={[
           `${member?.ign ?? memberId} · ${jobOf(memberId)?.label ?? "-"}`,
+          party ? (isThai ? `ปาร์ตี้: ${party.label}` : `Party: ${party.label}`) : "",
           withdrawn ? (isThai ? `สถานะลงทะเบียน: ${placement.regStatus}` : `Registration: ${placement.regStatus}`) : "",
           placement?.backfill ? (isThai ? `เลื่อนจากสำรองแทน ${placement.backfill.vacatedMemberId ? memberName(data, placement.backfill.vacatedMemberId) : "-"} เมื่อ ${formatDateTime(placement.backfill.at, isThai)}` : `Auto-promoted for ${placement.backfill.vacatedMemberId ? memberName(data, placement.backfill.vacatedMemberId) : "-"} at ${formatDateTime(placement.backfill.at, isThai)}`) : "",
         ]
@@ -210,7 +274,19 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
     );
   };
 
-  const importDialog = importOpen && canEdit ? <RosterImport isThai={isThai} data={data} notify={notify} notifyError={notifyError} reloadData={reloadData} onClose={() => setImportOpen(false)} /> : null;
+  const importDialog =
+    importOpen && canEdit ? (
+      <RosterImport
+        isThai={isThai}
+        data={data}
+        notify={notify}
+        notifyError={notifyError}
+        reloadData={reloadData}
+        onClose={() => setImportOpen(false)}
+        occurrence={selected ? { eventId: selected.event.id, date: selected.dateKey } : undefined}
+      />
+    ) : null;
+  const partyDialog = partyBoardOpen && canEdit ? <PartyBoard isThai={isThai} data={data} notify={notify} onClose={() => setPartyBoardOpen(false)} /> : null;
 
   if (!selected) {
     return (
@@ -231,8 +307,8 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
           <p>
             {canEdit
               ? isThai
-                ? "ลากตัวสำรองไปวางในช่องของทีม (วางทับคนอื่น = สลับที่) หรือแตะการ์ดแล้วแตะช่อง ตัวสำรองคือคนที่ลงทะเบียนเล่นแล้วแต่ยังไม่มีทีม เรียงตามเวลาลงทะเบียน"
-                : "Drag a reserve onto a team slot (dropping on someone swaps them), or tap a card then tap a slot. Reserves are members registered as playing but not yet placed, in registration order."
+                ? "ลากตัวสำรองไปวางในช่องของทีม (วางทับคนอื่น = สลับที่) หรือแตะการ์ดแล้วแตะช่อง ตัวสำรองคือคนที่ลงทะเบียนเล่นแล้วแต่ยังไม่มีทีม เรียงตามเวลาลงทะเบียน ถ้าคนนั้นมีปาร์ตี้ประจำ วางลงช่องไหนของทีมก็ได้ ระบบจะจัดทั้งปาร์ตี้ลงทีมเดียวกันให้เอง"
+                : "Drag a reserve onto a team slot (dropping on someone swaps them), or tap a card then tap a slot. Reserves are members registered as playing but not yet placed, in registration order. If that member has a regular party, dropping them on any slot in a team seats the whole party there."
               : isThai
                 ? "แผนการจัดทีมล่าสุดจากแอดมิน ลงทะเบียนเล่นในตารางกิจกรรมเพื่อเข้าเป็นตัวสำรอง"
                 : "The latest team plan from the admins. Register as playing on the schedule to join the reserves."}
@@ -251,6 +327,9 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
             <>
               <button type="button" className="copy-button" onClick={() => setImportOpen(true)}>
                 <FileSpreadsheet size={14} /> {isThai ? "นำเข้า CSV (รายชื่อ + CP)" : "Import CSV (roster + CP)"}
+              </button>
+              <button type="button" className="copy-button" onClick={() => setPartyBoardOpen(true)}>
+                <Users2 size={14} /> {isThai ? "ปาร์ตี้ประจำ" : "Regular parties"}
               </button>
               <button
                 type="button"
@@ -324,6 +403,11 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
             <div className="picked-banner">
               <span className="job-dot" style={jobStyle(jobOf(picked))} />
               {isThai ? `เลือก ${memberName(data, picked)} แล้ว แตะช่องในทีมที่ต้องการ${placedIds.has(picked) ? " หรือแตะกล่องตัวสำรองเพื่อนำออก" : ""}` : `${memberName(data, picked)} selected. Tap a team slot${placedIds.has(picked) ? ", or the reserves box to unplace" : ""}.`}
+              {pickedParty && partyMatesFor(picked).length > 0 && (
+                <em className="party-hint">
+                  <Users2 size={11} /> {isThai ? `แตะช่องในทีมที่ต้องการ จะจัดทั้งปาร์ตี้ "${pickedParty.label}" ลงทีมนั้นให้เลย` : `Tap a slot on a team to seat the whole "${pickedParty.label}" party there`}
+                </em>
+              )}
               <button type="button" onClick={() => setPicked(null)}>
                 {isThai ? "ยกเลิก" : "Cancel"}
               </button>
@@ -360,10 +444,10 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
             </aside>
 
             <div className="rooms">
-              {plan.rooms.map((room) => {
+              {plan.rooms.map((room, roomIndex) => {
                 const placedInRoom = room.teams.reduce((total, team) => total + team.placements.length, 0);
                 return (
-                  <div className="team-column" key={room.id}>
+                  <div className={`team-column ${roomIndex === 0 ? "team-a" : roomIndex === 1 ? "team-b" : ""}`} key={room.id}>
                     <h3>
                       {room.name}
                       <small>
@@ -419,6 +503,7 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
         </>
       )}
       {importDialog}
+      {partyDialog}
     </section>
   );
 }
