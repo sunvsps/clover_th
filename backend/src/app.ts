@@ -100,6 +100,21 @@ export async function buildApp(opts: BuildOptions) {
   await app.register(requestId);
   await app.register(errorHandler);
   await app.register(helmet);
+  // Helmet's default CSP is kept as is, except that `upgrade-insecure-requests` is sent only in production: Safari upgrades
+  // http://localhost asset requests to https under it (a white page), and a plain-http dev/test origin has no TLS to upgrade to.
+  if (env.NODE_ENV !== 'production') {
+    app.addHook('onSend', async (_req, reply) => {
+      const csp = reply.getHeader('content-security-policy');
+      if (typeof csp === 'string')
+        reply.header(
+          'content-security-policy',
+          csp
+            .split(';')
+            .filter((d) => d.trim() !== 'upgrade-insecure-requests')
+            .join(';'),
+        );
+    });
+  }
   await app.register(cookie, { secret: env.SESSION_SECRET });
   // Default budget for EVERY route (design 9): per member when signed in, per IP otherwise. It runs in preHandler so the
   // session is already resolved. Individual routes override it with config.rateLimit (login, bot, claim/release);

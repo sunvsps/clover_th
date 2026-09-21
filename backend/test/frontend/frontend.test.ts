@@ -119,6 +119,26 @@ describe('serving the built frontend', () => {
     expect(res.headers['x-frame-options']).toBeDefined();
   });
 
+  it('the CSP sends upgrade-insecure-requests only in production, and keeps every other directive', async () => {
+    const dev = (await app.inject({ url: '/', headers: HTML })).headers['content-security-policy'] as string;
+    expect(dev).not.toContain('upgrade-insecure-requests');
+    const prod = await createTestApp(db, {
+      env: {
+        NODE_ENV: 'production',
+        SESSION_SECRET: 'Kq3vZ8xT1mR7wN5pL2yB9cD4fG6hJ0aSuEoIiXtVnMz',
+        SERVE_FRONTEND: 'off',
+      },
+    });
+    await prod.ready();
+    try {
+      const csp = (await prod.inject('/healthz')).headers['content-security-policy'] as string;
+      expect(csp).toContain('upgrade-insecure-requests');
+      expect(csp.replace(';upgrade-insecure-requests', '')).toBe(dev);
+    } finally {
+      await prod.close();
+    }
+  });
+
   it('/healthz and the API are untouched', async () => {
     const health = await app.inject('/healthz');
     expect(health.statusCode).toBe(200);

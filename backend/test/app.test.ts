@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -126,8 +127,16 @@ describe('env validation', () => {
     let out = '';
     let code = 0;
     try {
+      // Prisma loads backend/.env by itself, but never overrides a variable that is already set, and loadEnv treats an
+      // empty one as unset. So blank every variable of .env.example: a developer's local .env cannot fill them in.
+      const blank = Object.fromEntries(
+        readFileSync('.env.example', 'utf8')
+          .split('\n')
+          .filter((l) => /^[A-Z_]+=/.test(l))
+          .map((l) => [l.split('=')[0]!, '']),
+      );
       execFileSync('node_modules/.bin/tsx', ['src/server.ts'], {
-        env: { PATH: process.env.PATH! },
+        env: { PATH: process.env.PATH!, ...blank },
         stdio: 'pipe',
       });
     } catch (e) {
