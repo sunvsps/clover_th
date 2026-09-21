@@ -310,3 +310,28 @@
 .schedule-error { margin: 8px 0; color: #e88a7a; }
 .person.waitlisted { border-style: dashed; }
 .event-dialog-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Team planner on the plan API ---------- */
+.plan-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0; }
+.plan-toolbar label { display: grid; gap: 4px; font-size: 11px; color: #7c8879; }
+.plan-toolbar select { min-width: 220px; max-width: 100%; padding: 8px; color: #e8eee6; background: #171a18; border: 1px solid #2b302c; border-radius: 6px; }
+.plan-date { display: inline-flex; align-items: center; gap: 8px; }
+.plan-date button { display: inline-grid; place-items: center; width: 30px; height: 30px; color: #e8eee6; background: #171a18; border: 1px solid #2b302c; border-radius: 6px; }
+.plan-count, .auto-badge { padding: 4px 8px; font: 11px 'DM Mono', monospace; color: #b9e86d; border: 1px solid #3a4a34; border-radius: 999px; }
+.confirm-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid #7a4a3a; background: #2a1c18; border-radius: 8px; }
+.room-block + .room-block { margin-top: 18px; }
+.room-block .subteam-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.subteam-slot.empty.compact { display: block; height: auto; padding: 4px 8px; font: 10px 'DM Mono', monospace; text-align: left; background: transparent; cursor: default; }
+button.subteam-slot.empty.compact { cursor: pointer; color: #9db095; }
+.subteam-card.archived { opacity: .7; }
+.chip-slot { flex: 0 0 auto; min-width: 14px; font: 700 9px 'DM Mono', monospace; opacity: .7; }
+.chip-flag { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px; font-size: 9px; color: #3a1a0a; background: #f0b070; border-radius: 3px; }
+.member-chip { flex-wrap: wrap; }
+.backfill-badge { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; width: 100%; padding: 1px 4px; font-size: 9px; font-weight: 600; color: #0f1410; background: rgba(255, 255, 255, .55); border-radius: 3px; }
+.undo-backfill { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px; font-size: 9px; color: #0f1410; background: #fff; border: 1px solid #0f1410; border-radius: 3px; cursor: pointer; }
+.reserve-list { display: grid; gap: 4px; padding: 0; margin: 10px 0 0; list-style: none; }
+.pool-second { margin-top: 16px; }
+@media (max-width: 480px) {
+  .room-block .subteam-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .plan-toolbar select { min-width: 0; width: 100%; }
+}

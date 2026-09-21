@@ -1,520 +1,533 @@
-import { useState, type DragEvent, type FormEvent } from "react";
-import { Copy, Eraser, Eye, GripVertical, Palette, Pencil, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
-import { findJob, jobStyle, SUBTEAM_SIZE, SUBTEAMS_PER_TEAM, teamNames, type GuildMember, type Job } from "../data/guild";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { ArrowLeft, ArrowRight, Copy, CopyPlus, Eraser, Eye, GripVertical, Palette, RotateCcw, Search, TriangleAlert, Users, X } from "lucide-react";
+import {
+  clearPlan,
+  copyFromPrevious,
+  getPlan,
+  isApiError,
+  placeMember,
+  undoBackfill,
+  usePolling,
+  type Plan,
+  type PlanPlacement,
+  type PlanTeam,
+  type WireActivity,
+} from "../api";
+import { addDays, formatDay, startOfWeek, todayKey } from "../lib/bangkok";
+import { findJob, jobStyle, weekDayNames, type GuildMember, type Job, type ScheduleEvent } from "../data/guild";
 import JobChartCard from "./JobChartCard";
 import JobManagerDialog from "./JobManagerDialog";
 import { useJobManager } from "../hooks/useJobManager";
-
-export type TeamAssignments = Record<string, string>; // memberId -> "A-3"
+import { assignmentsOf, backfillText, flagText, planChangeNotices, planToText } from "./plannerModel";
 
 type Props = {
   isThai: boolean;
   isAdmin: boolean;
   jobs: Job[];
   members: GuildMember[];
-  assignments: TeamAssignments;
-  onAssign: (memberId: string, slot: string) => void;
-  onRemove: (memberId: string) => void;
-  onClear: () => void;
-  onAddMember: (ign: string, job: number) => boolean;
-  onRenameMember: (memberId: string, newIgn: string) => boolean;
-  onSetMemberJob: (memberId: string, job: number) => void;
-  onRemoveMember: (memberId: string) => void;
+  events: ScheduleEvent[];
+  activities: WireActivity[];
+  /** job list edits are still local until WP15 */
   onSaveJobs: (next: Job[]) => boolean;
   onNotice: (message: string) => void;
 };
 
 const DRAG_KEY = "text/guild-member";
+const POLL_MS = 5000;
 
-export default function TeamPlanner({
-  isThai,
-  isAdmin,
-  jobs,
-  members,
-  assignments,
-  onAssign,
-  onRemove,
-  onClear,
-  onAddMember,
-  onRenameMember,
-  onSetMemberJob,
-  onRemoveMember,
-  onSaveJobs,
-  onNotice,
-}: Props) {
-  const [search, setSearch] = useState("");
-  const [picked, setPicked] = useState<string | null>(null);
-  const [hoverSlot, setHoverSlot] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
-  const [newJob, setNewJob] = useState(jobs[0]?.id ?? 1);
-  const [editing, setEditing] = useState<{ id: string; ign: string; value: string; job: number } | null>(null);
-  const jobManager = useJobManager(jobs, onSaveJobs);
-  const [slotSearch, setSlotSearch] = useState<{ slot: string; query: string } | null>(null);
-
-  const canEdit = isAdmin;
-  const byId = new Map(members.map((member) => [member.id, member]));
-  const ignOf = (id: string) => byId.get(id)?.ign ?? id;
-  const jobOf = (member: GuildMember) => findJob(jobs, member.job);
-  const jobLabel = (member: GuildMember) => jobOf(member)?.label ?? "—";
-  const query = search.trim().toLowerCase();
-  const unassigned = [...members.filter((member) => !assignments[member.id])].sort((a, b) => a.job - b.job);
-  const visiblePool = unassigned.filter((member) => member.ign.toLowerCase().includes(query));
-  const membersIn = (slot: string) => members.filter((member) => assignments[member.id] === slot);
-  const assignedCount = Object.keys(assignments).length;
-
-  function place(member: string, slot: string) {
-    onAssign(member, slot);
-    setPicked(null);
-    setHoverSlot(null);
-  }
-
-  function startDrag(event: DragEvent<HTMLElement>, member: string) {
-    if (!canEdit) {
-      event.preventDefault();
-      return;
-    }
-    event.dataTransfer.setData(DRAG_KEY, member);
-    event.dataTransfer.effectAllowed = "move";
-    setPicked(null);
-  }
-
-  function dropOnSlot(event: DragEvent<HTMLElement>, slot: string) {
-    event.preventDefault();
-    const member = event.dataTransfer.getData(DRAG_KEY);
-    if (member && canEdit) place(member, slot);
-  }
-
-  function dropOnPool(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    const member = event.dataTransfer.getData(DRAG_KEY);
-    if (member && canEdit) onRemove(member);
-    setHoverSlot(null);
-  }
-
-  function tapChip(member: string) {
-    if (!canEdit) return;
-    setPicked((current) => (current === member ? null : member));
-  }
-
-  function tapSlot(slot: string) {
-    if (picked && canEdit) place(picked, slot);
-  }
-
-  function submitNewMember(event: FormEvent) {
-    event.preventDefault();
-    if (onAddMember(newName.trim(), newJob)) setNewName("");
-  }
-
-  function saveMemberEdit() {
-    if (!editing) return;
-    const member = byId.get(editing.id);
-    const next = editing.value.trim();
-    if (member && editing.job !== member.job) onSetMemberJob(editing.id, editing.job);
-    if (next && next !== editing.ign && !onRenameMember(editing.id, next)) return;
-    setEditing(null);
-  }
-
-  const slotMatches = (query: string) =>
-    query.trim() ? unassigned.filter((member) => member.ign.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6) : [];
-
-  function copyPlan() {
-    const lines = [`Clover_TH Team Plan`, ""];
-    teamNames.forEach((team) => {
-      lines.push(`Team ${team}`);
-      for (let index = 1; index <= SUBTEAMS_PER_TEAM; index += 1) {
-        const list = membersIn(`${team}-${index}`);
-        lines.push(`  ${team}${index}: ${list.map((member) => `${member.ign} (${jobLabel(member)})`).join(", ") || "-"}`);
-      }
-      lines.push("");
-    });
-    navigator.clipboard?.writeText(lines.join("\n").trim());
-    onNotice(isThai ? "คัดลอกรายชื่อทีมแล้ว" : "Team plan copied to clipboard.");
-  }
-
-  const chip = (member: GuildMember, inSlot: boolean) => (
-    <div
-      className={`member-chip ${picked === member.id ? "picked" : ""} ${canEdit ? "editable" : ""}`}
-      style={jobStyle(jobOf(member))}
-      draggable={canEdit}
-      key={member.id}
-      onDragStart={(event) => startDrag(event, member.id)}
-      onClick={(event) => {
-        event.stopPropagation();
-        tapChip(member.id);
-      }}
-      role={canEdit ? "button" : undefined}
-      tabIndex={canEdit ? 0 : undefined}
-      onKeyDown={(event) => {
-        if (canEdit && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          tapChip(member.id);
-        }
-      }}
-      title={`${member.ign} · ${jobLabel(member)}`}
-    >
-      {canEdit && <GripVertical size={12} className="grip" />}
-      <span className="chip-name">{member.ign}</span>
-      {canEdit && (
-        <span className="chip-tools">
-          <button
-            type="button"
-            className="chip-tool"
-            aria-label={isThai ? "แก้ไขสมาชิก" : "Edit member"}
-            title={isThai ? "แก้ไขชื่อ / อาชีพ" : "Edit name / job"}
-            onClick={(event) => {
-              event.stopPropagation();
-              setPicked(null);
-              setEditing({ id: member.id, ign: member.ign, value: member.ign, job: member.job });
-            }}
-          >
-            <Pencil size={10} />
-          </button>
-          {inSlot && (
-            <button
-              type="button"
-              className="chip-tool remove"
-              aria-label={isThai ? "นำออกจากทีม" : "Remove from team"}
-              title={isThai ? "นำออกจากทีม" : "Remove from team"}
-              onClick={(event) => {
-                event.stopPropagation();
-                onRemove(member.id);
-              }}
-            >
-              <X size={11} />
-            </button>
-          )}
-        </span>
-      )}
-    </div>
+export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, activities, onSaveJobs, onNotice }: Props) {
+  const t = (en: string, th: string) => (isThai ? th : en);
+  const plannerIds = useMemo(() => new Set(activities.filter((a) => a.hasPlanner).map((a) => a.id)), [activities]);
+  const plannerEvents = useMemo(
+    () => events.filter((e) => plannerIds.has(e.activityId)).sort((a, b) => a.name.localeCompare(b.name) || a.day - b.day || a.start.localeCompare(b.start)),
+    [events, plannerIds],
   );
+  const dayNames = isThai ? weekDayNames.th : weekDayNames.en;
+  const occurrenceThisWeek = (event: ScheduleEvent) => addDays(startOfWeek(todayKey()), event.day);
 
-  const renderSubteam = (team: string, index: number) => {
-    const slot = `${team}-${index}`;
-    const list = membersIn(slot);
-    const isFull = list.length >= SUBTEAM_SIZE;
-    const canReceive = canEdit && picked !== null && !isFull && assignments[picked] !== slot;
+  const [eventId, setEventId] = useState(() => plannerEvents[0]?.id ?? "");
+  const event = plannerEvents.find((e) => e.id === eventId);
+  const [date, setDate] = useState(() => (plannerEvents[0] ? occurrenceThisWeek(plannerEvents[0]) : todayKey()));
+
+  const [picked, setPicked] = useState<string | null>(null);
+  const [hoverTeam, setHoverTeam] = useState<number | "pool" | null>(null);
+  const [search, setSearch] = useState("");
+  const [addTo, setAddTo] = useState<{ teamId: number; query: string } | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const jobManager = useJobManager(jobs, onSaveJobs);
+
+  const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  const ignOf = (id: string) => byId.get(id)?.ign ?? (isThai ? "อดีตสมาชิก" : "Former member");
+  const jobOf = (id: string) => findJob(jobs, byId.get(id)?.job ?? -1);
+
+  // The plan is polled every 5 s while this tab is open (and refetched on focus / after every write).
+  const polled = usePolling<Plan>((signal) => getPlan(eventId, date, signal), { intervalMs: POLL_MS, key: `${eventId}:${date}`, enabled: Boolean(event) });
+  const plan = polled.data && polled.data.eventId === eventId && polled.data.date === date ? polled.data : null;
+
+  // Toast when the poll shows an auto-promotion or another user's change.
+  const previous = useRef<Plan | null>(null);
+  const ownVersion = useRef(0);
+  useEffect(() => {
+    if (!plan) return;
+    const before = previous.current;
+    previous.current = plan;
+    if (!before || before.eventId !== plan.eventId || before.date !== plan.date) return;
+    for (const message of planChangeNotices(before, plan, ownVersion.current, isThai, ignOf)) onNotice(message);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan]);
+
+  function selectEvent(id: string) {
+    const next = plannerEvents.find((e) => e.id === id);
+    if (!next) return;
+    setEventId(id);
+    setDate(occurrenceThisWeek(next));
+    setPicked(null);
+    setConfirmClear(false);
+    ownVersion.current = 0;
+  }
+  function shiftDate(days: number) {
+    setDate((d) => addDays(d, days));
+    setPicked(null);
+    ownVersion.current = 0;
+  }
+
+  /** Runs one admin write with the plan version we last saw; on any failure the plan is refetched. */
+  async function run<R>(action: (version: number) => Promise<R>, onOk?: (result: R) => void) {
+    if (!plan || busy) return;
+    setBusy(true);
+    try {
+      const result = await action(plan.version);
+      const v = (result as { version?: number }).version;
+      if (typeof v === "number") ownVersion.current = Math.max(ownVersion.current, v);
+      onOk?.(result);
+    } catch (err) {
+      if (isApiError(err)) {
+        // a stale version: say so; the refetch below brings the current plan (the selection stays where it is)
+        onNotice(err.userMessage(isThai));
+        if (err.code !== "PLAN_VERSION_CONFLICT") setPicked(null);
+      } else onNotice(t("Something went wrong. Please try again.", "เกิดข้อผิดพลาด กรุณาลองอีกครั้ง"));
+    } finally {
+      setBusy(false);
+      polled.refresh();
+    }
+  }
+
+  const place = (memberId: string, teamId: number | null, slot?: number) => {
+    setHoverTeam(null);
+    // the selection is cleared only when the write succeeds, so a stale-version retry is one tap
+    void run(
+      (v) => placeMember(eventId, date, memberId, { teamId, ...(slot !== undefined ? { slot } : {}) }, v),
+      () => setPicked(null),
+    );
+  };
+
+  const canEdit = isAdmin && Boolean(plan);
+  const placedIds = new Set(Object.keys(assignmentsOf(plan)));
+  const reserveIds = new Set((plan?.reserves ?? []).map((r) => r.memberId));
+  const pool = members
+    .filter((m) => !placedIds.has(m.id) && !reserveIds.has(m.id))
+    .filter((m) => m.ign.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => a.job - b.job || a.ign.localeCompare(b.ign));
+
+  function startDrag(e: DragEvent<HTMLElement>, memberId: string) {
+    if (!canEdit) return e.preventDefault();
+    e.dataTransfer.setData(DRAG_KEY, memberId);
+    e.dataTransfer.effectAllowed = "move";
+    setPicked(null);
+  }
+  const dropOn = (e: DragEvent<HTMLElement>, teamId: number | null, slot?: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = e.dataTransfer.getData(DRAG_KEY);
+    if (id && canEdit) place(id, teamId, slot);
+    setHoverTeam(null);
+  };
+
+  const chipName = (memberId: string) => ignOf(memberId);
+  const memberChip = (memberId: string, opts: { placement?: PlanPlacement; team?: PlanTeam; reserve?: number }) => {
+    const { placement, team } = opts;
+    const flag = placement ? flagText(placement.registration, isThai) : null;
+    const isBackfill = placement?.source === "autoBackfill";
     return (
       <div
-        className={`subteam-card ${hoverSlot === slot ? "hover" : ""} ${isFull ? "full" : ""} ${canReceive ? "receivable" : ""}`}
-        key={slot}
-        onDragOver={(event) => {
-          if (!canEdit) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-          if (hoverSlot !== slot) setHoverSlot(slot);
+        key={memberId}
+        className={`member-chip ${picked === memberId ? "picked" : ""} ${canEdit ? "editable" : ""} ${flag ? "flagged" : ""}`}
+        style={jobStyle(jobOf(memberId))}
+        draggable={canEdit}
+        onDragStart={(e) => startDrag(e, memberId)}
+        onDragOver={(e) => {
+          if (canEdit && team && placement) e.preventDefault();
         }}
-        onDragLeave={() => setHoverSlot((current) => (current === slot ? null : current))}
-        onDrop={(event) => dropOnSlot(event, slot)}
-        onClick={() => tapSlot(slot)}
+        onDrop={(e) => team && placement && dropOn(e, team.id, placement.slot)}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!canEdit) return;
+          if (picked && picked !== memberId && team && placement) return place(picked, team.id, placement.slot); // swap into this slot
+          setPicked((cur) => (cur === memberId ? null : memberId));
+        }}
+        role={canEdit ? "button" : undefined}
+        tabIndex={canEdit ? 0 : undefined}
+        onKeyDown={(e) => {
+          if (canEdit && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            setPicked((cur) => (cur === memberId ? null : memberId));
+          }
+        }}
+        title={`${chipName(memberId)} · ${jobOf(memberId)?.label ?? "—"}`}
+      >
+        {canEdit && <GripVertical size={12} className="grip" />}
+        {placement && <span className="chip-slot">{placement.slot}</span>}
+        {opts.reserve !== undefined && <span className="chip-slot">#{opts.reserve}</span>}
+        <span className="chip-name">{chipName(memberId)}</span>
+        {flag && (
+          <span className="chip-flag" title={flag}>
+            <TriangleAlert size={10} /> {flag}
+          </span>
+        )}
+        {isBackfill && (
+          <span className="backfill-badge" title={backfillText(placement!.backfill?.vacatedMemberId ? ignOf(placement!.backfill.vacatedMemberId) : null, isThai)}>
+            {backfillText(placement!.backfill?.vacatedMemberId ? ignOf(placement!.backfill.vacatedMemberId) : null, isThai)}
+            {canEdit && (
+              <button
+                type="button"
+                className="undo-backfill"
+                disabled={busy}
+                aria-label={t(`Undo auto-promotion of ${chipName(memberId)}`, `ย้อนการเลื่อนอัตโนมัติของ ${chipName(memberId)}`)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void run(
+                    (v) => undoBackfill(eventId, date, memberId, v),
+                    () => onNotice(t(`${chipName(memberId)} went back to the reserves.`, `${chipName(memberId)} กลับไปอยู่ในรายชื่อสำรองแล้ว`)),
+                  );
+                }}
+              >
+                <RotateCcw size={10} /> {t("Undo", "ย้อนกลับ")}
+              </button>
+            )}
+          </span>
+        )}
+        {canEdit && placement && (
+          <button
+            type="button"
+            className="chip-tool remove"
+            aria-label={t(`Remove ${chipName(memberId)} from the team`, `นำ ${chipName(memberId)} ออกจากทีม`)}
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              place(memberId, null);
+            }}
+          >
+            <X size={11} />
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const addMatches = (query: string) => {
+    const q = query.trim().toLowerCase();
+    return q ? members.filter((m) => !placedIds.has(m.id) && m.ign.toLowerCase().includes(q)).slice(0, 6) : [];
+  };
+
+  const renderTeam = (team: PlanTeam) => {
+    const free = team.size - team.placements.length;
+    const isFull = free <= 0;
+    const canReceive = canEdit && picked !== null && !isFull;
+    const sorted = [...team.placements].sort((a, b) => a.slot - b.slot);
+    return (
+      <div
+        key={team.id}
+        data-team={team.name}
+        className={`subteam-card ${isFull ? "full" : ""} ${hoverTeam === team.id ? "hover" : ""} ${canReceive ? "receivable" : ""} ${team.archived ? "archived" : ""}`}
+        onDragOver={(e) => {
+          if (!canEdit) return;
+          e.preventDefault();
+          if (hoverTeam !== team.id) setHoverTeam(team.id);
+        }}
+        onDragLeave={() => setHoverTeam((c) => (c === team.id ? null : c))}
+        onDrop={(e) => dropOn(e, team.id)}
+        onClick={() => picked && canEdit && place(picked, team.id)}
       >
         <div className="subteam-title">
-          <strong>
-            {team}
-            {index}
-          </strong>
+          <strong>{team.name}</strong>
           <small>
-            {list.length}/{SUBTEAM_SIZE}
+            {team.placements.length}/{team.size}
+            {team.archived && ` · ${t("removed", "ถูกลบ")}`}
           </small>
         </div>
         <div className="subteam-slots">
-          {Array.from({ length: SUBTEAM_SIZE }, (_, slotIndex) => {
-            const member = list[slotIndex];
-            return member ? (
-              <div className="subteam-slot" key={member.id}>
-                {chip(member, true)}
-              </div>
-            ) : canEdit && slotIndex === list.length ? (
-              <div className="subteam-slot search" key={`search-${slotIndex}`} onClick={(event) => event.stopPropagation()}>
+          {sorted.map((p) => (
+            <div className="subteam-slot" key={p.memberId}>
+              {memberChip(p.memberId, { placement: p, team })}
+            </div>
+          ))}
+          {free > 0 &&
+            (canEdit && addTo?.teamId === team.id ? (
+              <div className="subteam-slot search" onClick={(e) => e.stopPropagation()}>
                 <Search size={11} />
                 <input
+                  autoFocus
                   type="search"
-                  value={slotSearch?.slot === slot ? slotSearch.query : ""}
-                  placeholder={isThai ? "พิมพ์ชื่อเพื่อเพิ่ม..." : "Type a name to add..."}
-                  onChange={(event) => setSlotSearch({ slot, query: event.target.value })}
-                  onFocus={() => setSlotSearch({ slot, query: slotSearch?.slot === slot ? slotSearch.query : "" })}
-                  onBlur={() => window.setTimeout(() => setSlotSearch((current) => (current?.slot === slot ? null : current)), 150)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      const first = slotMatches(slotSearch?.slot === slot ? slotSearch.query : "")[0];
-                      if (first) {
-                        event.preventDefault();
-                        place(first.id, slot);
-                        setSlotSearch(null);
-                      }
+                  value={addTo.query}
+                  placeholder={t("Type a name to add...", "พิมพ์ชื่อเพื่อเพิ่ม...")}
+                  aria-label={t(`Add member to ${team.name}`, `เพิ่มสมาชิกเข้า ${team.name}`)}
+                  onChange={(e) => setAddTo({ teamId: team.id, query: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setAddTo(null);
+                    if (e.key === "Enter") {
+                      const first = addMatches(addTo.query)[0];
+                      if (first) place(first.id, team.id);
+                      setAddTo(null);
                     }
-                    if (event.key === "Escape") setSlotSearch(null);
                   }}
-                  aria-label={isThai ? `เพิ่มสมาชิกเข้า ${team}${index}` : `Add member to ${team}${index}`}
                 />
-                {slotSearch?.slot === slot && slotMatches(slotSearch.query).length > 0 && (
+                {addMatches(addTo.query).length > 0 && (
                   <ul className="admin-entry-matches slot-matches">
-                    {slotMatches(slotSearch.query).map((member) => (
-                      <li key={member.id}>
+                    {addMatches(addTo.query).map((m) => (
+                      <li key={m.id}>
                         <button
                           type="button"
-                          onMouseDown={(event) => event.preventDefault()}
                           onClick={() => {
-                            place(member.id, slot);
-                            setSlotSearch(null);
+                            place(m.id, team.id);
+                            setAddTo(null);
                           }}
                         >
-                          <i className="job-dot" style={jobStyle(jobOf(member))} /> {member.ign}
-                          <small>{jobLabel(member)}</small>
+                          <i className="job-dot" style={jobStyle(findJob(jobs, m.job))} /> {m.ign}
                         </button>
                       </li>
                     ))}
                   </ul>
                 )}
-                {slotSearch?.slot === slot && slotSearch.query.trim() && slotMatches(slotSearch.query).length === 0 && (
-                  <ul className="admin-entry-matches slot-matches">
-                    <li className="no-match">{isThai ? "ไม่พบสมาชิกที่ยังว่าง" : "No unassigned member matches"}</li>
-                  </ul>
-                )}
               </div>
+            ) : canEdit ? (
+              <button
+                type="button"
+                className="subteam-slot empty compact"
+                aria-label={t(`Add a member to ${team.name} (${free} free)`, `เพิ่มสมาชิกเข้า ${team.name} (ว่าง ${free})`)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAddTo({ teamId: team.id, query: "" });
+                }}
+              >
+                + {free} {t("free", "ว่าง")}
+              </button>
             ) : (
-              <div className="subteam-slot empty" key={`empty-${slotIndex}`}>
-                <span>{slotIndex + 1}</span>
+              <div className="subteam-slot empty compact">
+                {free} {t("free", "ว่าง")}
               </div>
-            );
-          })}
+            ))}
         </div>
       </div>
     );
   };
 
+  function copyText() {
+    if (!plan || !event) return;
+    const title = `Clover_TH ${event.name} ${dayNames[event.day]} ${formatDay(date, isThai)} ${event.start}`;
+    navigator.clipboard?.writeText(planToText(plan, { title, isThai, ignOf, jobOf: (id) => jobOf(id)?.label ?? "—" }));
+    onNotice(t("Team plan copied to clipboard.", "คัดลอกรายชื่อทีมแล้ว"));
+  }
+
+  const totalPlaced = plan ? plan.rooms.reduce((n, r) => n + r.teams.reduce((m, tm) => m + tm.placements.length, 0), 0) : 0;
+  const totalSlots = plan ? plan.rooms.reduce((n, r) => n + r.capacity, 0) : 0;
+
   return (
-    <section className={`feature-page team-page ${canEdit ? "" : "view-only"}`}>
+    <section className={`feature-page team-page ${isAdmin ? "" : "view-only"}`}>
       <div className="feature-heading">
         <div>
           <p className="eyebrow">
             <Users size={13} /> GUILD TEAM PLANNER
           </p>
-          <h2>{isThai ? "จัดทีมกิลด์" : "Guild team planner"}</h2>
+          <h2>{t("Guild team planner", "จัดทีมกิลด์")}</h2>
           <p>
-            {canEdit
-              ? isThai
-                ? `ลากการ์ดสมาชิกไปวางในทีมย่อย A1-A${SUBTEAMS_PER_TEAM} หรือ B1-B${SUBTEAMS_PER_TEAM} (ทีมละไม่เกิน ${SUBTEAM_SIZE} คน) บนไอแพด/มือถือให้แตะการ์ดแล้วแตะทีมที่ต้องการ กดไอคอนดินสอเพื่อแก้ชื่อ`
-                : `Drag member cards into subteams A1-A${SUBTEAMS_PER_TEAM} or B1-B${SUBTEAMS_PER_TEAM} (max ${SUBTEAM_SIZE} each). On tablets and phones, tap a card then tap a subteam. Use the pencil to rename.`
-              : isThai
-                ? "แผนการจัดทีมล่าสุดจากแอดมิน สีของการ์ดแสดงอาชีพตามกราฟด้านล่าง"
-                : "The latest team plan from the admins. Card colours follow the job chart below."}
+            {isAdmin
+              ? t(
+                  "Drag a member onto a team (or drop on a member to swap). On tablets and phones, tap a member, then tap the team.",
+                  "ลากสมาชิกไปวางในทีม (วางบนสมาชิกเพื่อสลับที่) บนไอแพด/มือถือให้แตะสมาชิกแล้วแตะทีมที่ต้องการ",
+                )
+              : t("The latest team plan from the admins. Card colours follow the job chart below.", "แผนการจัดทีมล่าสุดจากแอดมิน สีของการ์ดแสดงอาชีพตามกราฟด้านล่าง")}
           </p>
         </div>
         <div className="team-actions">
-          {!canEdit && (
+          {!isAdmin && (
             <span className="view-only-badge">
-              <Eye size={13} /> {isThai ? "ดูอย่างเดียว" : "View only"}
+              <Eye size={13} /> {t("View only", "ดูอย่างเดียว")}
             </span>
           )}
-          <button type="button" className="copy-button" onClick={copyPlan}>
-            <Copy size={14} /> {isThai ? "คัดลอกรายชื่อทีม" : "Copy plan"}
+          <button type="button" className="copy-button" onClick={copyText} disabled={!plan}>
+            <Copy size={14} /> {t("Copy plan", "คัดลอกรายชื่อทีม")}
           </button>
-          {canEdit && (
+          {isAdmin && (
             <button type="button" className="copy-button" onClick={jobManager.open}>
-              <Palette size={14} /> {isThai ? "จัดการอาชีพ" : "Manage jobs"}
+              <Palette size={14} /> {t("Manage jobs", "จัดการอาชีพ")}
             </button>
           )}
-          {canEdit && (
-            <button type="button" className="copy-button danger" onClick={onClear} disabled={assignedCount === 0}>
-              <Eraser size={14} /> {isThai ? "ล้างทั้งหมด" : "Clear all"}
+          {isAdmin && (
+            <button
+              type="button"
+              className="copy-button"
+              disabled={!plan || busy}
+              onClick={() =>
+                void run(
+                  (v) => copyFromPrevious(eventId, date, v),
+                  (r) =>
+                    onNotice(
+                      t(
+                        `Copied ${r.copied} placements from ${r.sourceDate}${r.skipped.length ? ` (${r.skipped.length} skipped)` : ""}.`,
+                        `คัดลอก ${r.copied} ตำแหน่งจาก ${r.sourceDate}${r.skipped.length ? ` (ข้าม ${r.skipped.length})` : ""}`,
+                      ),
+                    ),
+                )
+              }
+            >
+              <CopyPlus size={14} /> {t("Copy from last week", "คัดลอกจากสัปดาห์ก่อน")}
+            </button>
+          )}
+          {isAdmin && (
+            <button type="button" className="copy-button danger" onClick={() => setConfirmClear(true)} disabled={!plan || busy || totalPlaced === 0}>
+              <Eraser size={14} /> {t("Clear all", "ล้างทั้งหมด")}
             </button>
           )}
         </div>
       </div>
 
-      <div className="team-overview">
-        <JobChartCard
-          jobs={jobs}
-          members={members}
-          assignments={assignments}
-          isThai={isThai}
-          canEdit={canEdit}
-          onEditJobs={jobManager.open}
-        />
-        {canEdit && (
-          <form className="add-member-card" onSubmit={submitNewMember}>
-            <p className="eyebrow">
-              <Shield size={11} /> {isThai ? "แอดมิน: เพิ่มสมาชิกใหม่" : "ADMIN: ADD NEW MEMBER"}
-            </p>
-            <input
-              type="text"
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder={isThai ? "ชื่อในเกม" : "In-game name"}
-              maxLength={40}
-            />
-            <div className="job-picker" role="radiogroup" aria-label={isThai ? "เลือกอาชีพ" : "Choose job"}>
-              {jobs.map((job) => (
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={newJob === job.id}
-                  className={`job-swatch ${newJob === job.id ? "active" : ""}`}
-                  style={jobStyle(job)}
-                  key={job.id}
-                  onClick={() => setNewJob(job.id)}
-                  title={job.label}
-                >
-                  {job.label}
-                </button>
-              ))}
-            </div>
-            <div className="add-member-preview">
-              <span className="member-chip preview" style={jobStyle(findJob(jobs, newJob))}>
-                <span className="chip-name">{newName.trim() || (isThai ? "ตัวอย่างการ์ด" : "Card preview")}</span>
-              </span>
-              <em>{findJob(jobs, newJob)?.label}</em>
-            </div>
-            <button type="submit" className="admin-button" disabled={!newName.trim()}>
-              <UserPlus size={13} /> {isThai ? "เพิ่มสมาชิก" : "Add member"}
-            </button>
-          </form>
+      <div className="plan-toolbar">
+        <label>
+          <span>{t("Activity", "กิจกรรม")}</span>
+          <select value={eventId} onChange={(e) => selectEvent(e.target.value)} aria-label={t("Activity", "กิจกรรม")}>
+            {plannerEvents.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name} · {dayNames[e.day]} {e.start}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="plan-date" aria-label={t("Date", "วันที่")}>
+          <button type="button" onClick={() => shiftDate(-7)} aria-label={t("Previous week", "สัปดาห์ก่อน")}>
+            <ArrowLeft size={14} />
+          </button>
+          <strong>
+            {event ? dayNames[event.day] : ""} {formatDay(date, isThai)} {date.slice(0, 4)}
+          </strong>
+          <button type="button" onClick={() => shiftDate(7)} aria-label={t("Next week", "สัปดาห์ถัดไป")}>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+        {plan?.autoBackfill && <span className="auto-badge">{t("Auto-backfill on", "เติมช่องอัตโนมัติ")}</span>}
+        {plan && (
+          <span className="plan-count">
+            {totalPlaced}/{totalSlots} {t("placed", "จัดแล้ว")}
+          </span>
         )}
       </div>
 
-      {picked && (
-        <div className="picked-banner">
-          <span className="job-dot" style={jobStyle(findJob(jobs, byId.get(picked)?.job ?? 0))} />
-          {isThai
-            ? `เลือก ${ignOf(picked)} แล้ว แตะทีมย่อยที่ต้องการวาง${assignments[picked] ? " หรือแตะช่องสมาชิกเพื่อนำออกจากทีม" : ""}`
-            : `${ignOf(picked)} selected. Tap a subteam to place${assignments[picked] ? ", or tap the member pool to unassign" : ""}.`}
-          <button type="button" onClick={() => setPicked(null)}>
-            {isThai ? "ยกเลิก" : "Cancel"}
+      {confirmClear && (
+        <div className="confirm-banner" role="alertdialog" aria-label={t("Confirm clear", "ยืนยันการล้าง")}>
+          {t(`Remove all ${totalPlaced} placements from this plan? Reserves stay registered.`, `นำทั้ง ${totalPlaced} คนออกจากแผนนี้? สำรองยังคงลงทะเบียนอยู่`)}
+          <button
+            type="button"
+            className="copy-button danger"
+            onClick={() => {
+              setConfirmClear(false);
+              void run(
+                (v) => clearPlan(eventId, date, v),
+                (r) => onNotice(t(`Plan cleared (${r.removed} removed).`, `ล้างแผนแล้ว (${r.removed} คน)`)),
+              );
+            }}
+          >
+            {t("Clear plan", "ล้างแผน")}
+          </button>
+          <button type="button" className="copy-button" onClick={() => setConfirmClear(false)}>
+            {t("Cancel", "ยกเลิก")}
           </button>
         </div>
       )}
 
-      <div className="team-planner-layout">
-        <aside
-          className={`member-pool ${hoverSlot === "pool" ? "hover" : ""}`}
-          onDragOver={(event) => {
-            if (!canEdit) return;
-            event.preventDefault();
-            if (hoverSlot !== "pool") setHoverSlot("pool");
-          }}
-          onDragLeave={() => setHoverSlot((current) => (current === "pool" ? null : current))}
-          onDrop={dropOnPool}
-          onClick={() => {
-            if (picked && assignments[picked]) {
-              onRemove(picked);
-              setPicked(null);
-            }
-          }}
-        >
-          <div className="pool-title">
-            <strong>{isThai ? "สมาชิกที่ยังไม่มีทีม" : "Unassigned members"}</strong>
-            <span>
-              {unassigned.length}/{members.length}
-            </span>
-          </div>
-          <label className="team-search pool-search" onClick={(event) => event.stopPropagation()}>
-            <Search size={14} />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={isThai ? "ค้นหาสมาชิกที่ยังไม่มีทีม..." : "Search unassigned members..."}
-            />
-          </label>
-          <div className="pool-chips">{visiblePool.map((member) => chip(member, false))}</div>
-          {visiblePool.length === 0 && (
-            <p className="empty-search">{query ? (isThai ? "ไม่พบสมาชิก" : "No members found.") : isThai ? "จัดทีมครบทุกคนแล้ว" : "Everyone has a team."}</p>
-          )}
-        </aside>
+      {polled.error && (
+        <p className="schedule-error" role="alert">
+          {polled.error.userMessage(isThai)}
+        </p>
+      )}
 
-        <div className="team-columns">
-          {teamNames.map((team) => {
-            const total = members.filter((member) => assignments[member.id]?.startsWith(`${team}-`)).length;
-            return (
-              <div className={`team-column team-${team.toLowerCase()}`} key={team}>
-                <h3>
-                  Team {team}
-                  <small>
-                    {total} {isThai ? "คน" : "members"} · {SUBTEAMS_PER_TEAM} {isThai ? "ทีมย่อย" : "subteams"}
-                  </small>
-                </h3>
-                <div className="subteam-grid">{Array.from({ length: SUBTEAMS_PER_TEAM }, (_, index) => renderSubteam(team, index + 1))}</div>
-              </div>
-            );
-          })}
-        </div>
+      <div className="team-overview">
+        <JobChartCard jobs={jobs} members={members} assignments={assignmentsOf(plan)} isThai={isThai} canEdit={isAdmin} onEditJobs={jobManager.open} />
       </div>
 
-      {editing && canEdit && (
-        <div className="page-modal-backdrop" role="presentation" onClick={() => setEditing(null)}>
-          <section className="page-modal member-editor" role="dialog" aria-modal="true" aria-labelledby="member-editor-title" onClick={(event) => event.stopPropagation()}>
-            <div className="page-modal-header">
-              <div>
-                <p className="eyebrow">
-                  <Pencil size={11} /> {isThai ? "แก้ไขสมาชิก" : "EDIT MEMBER"}
-                </p>
-                <h2 id="member-editor-title">{editing.ign}</h2>
-              </div>
-              <button type="button" className="modal-close" onClick={() => setEditing(null)} aria-label="Close">
-                ×
-              </button>
-            </div>
-            <form
-              className="editor-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                saveMemberEdit();
-              }}
-            >
-              <label>
-                <span>{isThai ? "ชื่อในเกม" : "In-game name"}</span>
-                <input autoFocus type="text" value={editing.value} maxLength={40} onChange={(event) => setEditing({ ...editing, value: event.target.value })} />
-              </label>
-              <div>
-                <span className="field-label">{isThai ? "อาชีพ / สีการ์ด" : "Job / card colour"}</span>
-                <div className="job-picker" role="radiogroup">
-                  {jobs.map((job) => (
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={editing.job === job.id}
-                      className={`job-swatch ${editing.job === job.id ? "active" : ""}`}
-                      style={jobStyle(job)}
-                      key={job.id}
-                      onClick={() => setEditing({ ...editing, job: job.id })}
-                    >
-                      {job.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="add-member-preview">
-                <span className="member-chip preview" style={jobStyle(findJob(jobs, editing.job))}>
-                  <span className="chip-name">{editing.value.trim() || editing.ign}</span>
-                </span>
-                <em>{findJob(jobs, editing.job)?.label}</em>
-              </div>
-              <div className="editor-actions">
-                {byId.get(editing.id)?.custom && (
-                  <button
-                    type="button"
-                    className="copy-button danger"
-                    onClick={() => {
-                      onRemoveMember(editing.id);
-                      setEditing(null);
-                    }}
-                  >
-                    <Trash2 size={13} /> {isThai ? "ลบสมาชิก" : "Delete member"}
-                  </button>
-                )}
-                <button type="button" className="copy-button" onClick={() => setEditing(null)}>
-                  {isThai ? "ยกเลิก" : "Cancel"}
-                </button>
-                <button type="submit" className="admin-button" disabled={!editing.value.trim()}>
-                  {isThai ? "บันทึก" : "Save"}
-                </button>
-              </div>
-            </form>
-          </section>
+      {picked && canEdit && (
+        <div className="picked-banner">
+          <span className="job-dot" style={jobStyle(jobOf(picked))} />
+          {t(`${ignOf(picked)} selected. Tap a team to place, or a member to swap.`, `เลือก ${ignOf(picked)} แล้ว แตะทีมเพื่อวาง หรือแตะสมาชิกเพื่อสลับที่`)}
+          <button type="button" onClick={() => setPicked(null)}>
+            {t("Cancel", "ยกเลิก")}
+          </button>
         </div>
       )}
 
-      {canEdit && <JobManagerDialog manager={jobManager} members={members} isThai={isThai} />}
+      {!plan ? (
+        <p className="empty-search" role="status">
+          {polled.error ? "" : t("Loading the plan…", "กำลังโหลดแผน…")}
+        </p>
+      ) : (
+        <div className="team-planner-layout">
+          <aside
+            className={`member-pool ${hoverTeam === "pool" ? "hover" : ""}`}
+            onDragOver={(e) => {
+              if (!canEdit) return;
+              e.preventDefault();
+              if (hoverTeam !== "pool") setHoverTeam("pool");
+            }}
+            onDragLeave={() => setHoverTeam((c) => (c === "pool" ? null : c))}
+            onDrop={(e) => dropOn(e, null)}
+            onClick={() => picked && placedIds.has(picked) && place(picked, null)}
+          >
+            <div className="pool-title">
+              <strong>{t("Reserves", "สำรอง")}</strong>
+              <span>{plan.reserves.length}</span>
+            </div>
+            <ol className="reserve-list" aria-label={t("Reserves in registration order", "รายชื่อสำรองตามลำดับลงทะเบียน")}>
+              {plan.reserves.map((r) => (
+                <li key={r.memberId}>{memberChip(r.memberId, { reserve: r.order })}</li>
+              ))}
+            </ol>
+            {plan.reserves.length === 0 && <p className="empty-search">{t("No reserves.", "ไม่มีสำรอง")}</p>}
+
+            {isAdmin && (
+              <>
+                <div className="pool-title pool-second">
+                  <strong>{t("Other members", "สมาชิกอื่น")}</strong>
+                  <span>{pool.length}</span>
+                </div>
+                <label className="team-search pool-search" onClick={(e) => e.stopPropagation()}>
+                  <Search size={14} />
+                  <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Search members...", "ค้นหาสมาชิก...")} />
+                </label>
+                <div className="pool-chips">{pool.map((m) => memberChip(m.id, {}))}</div>
+              </>
+            )}
+          </aside>
+
+          <div className="team-columns">
+            {plan.rooms.length === 0 && <p className="empty-search">{t("This activity has no teams yet.", "กิจกรรมนี้ยังไม่มีทีม")}</p>}
+            {plan.rooms.map((room) => {
+              const placed = room.teams.reduce((n, tm) => n + tm.placements.length, 0);
+              return (
+                <div className="team-column room-block" key={room.id} data-room={room.name}>
+                  <h3>
+                    {room.name}
+                    <small>
+                      {placed}/{room.capacity} {t("slots", "ช่อง")} · {room.teams.length} {t("teams", "ทีม")}
+                    </small>
+                  </h3>
+                  <div className="subteam-grid">{room.teams.map(renderTeam)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {isAdmin && <JobManagerDialog manager={jobManager} members={members} isThai={isThai} />}
     </section>
   );
 }

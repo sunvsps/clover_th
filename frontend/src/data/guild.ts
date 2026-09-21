@@ -29,12 +29,7 @@ export type GuildMember = {
   id: string;
   ign: string;
   job: number;
-  custom?: boolean; // added locally by the (still mock) planner UI, not from the roster
 };
-
-export const teamNames = ["A", "B"] as const;
-export const SUBTEAMS_PER_TEAM = 8;
-export const SUBTEAM_SIZE = 5;
 
 /** UI-side attendance. The wire uses JOINED/LEAVE/...; the mapping lives in `src/api/enums.ts` only. */
 export type Attendance = "joined" | "leave";

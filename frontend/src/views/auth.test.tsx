@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { get, LOGIN_URL } from "../api";
 import { navigate } from "../lib/navigate";
-import { meAdmin, meUser, mockApi, wireMembers } from "../test/api";
+import { fakePlanner, meAdmin, meUser, mockApi, wireMembers } from "../test/api";
 import { server } from "../test/server";
 
 vi.mock("../lib/navigate", () => ({ navigate: vi.fn() }));
@@ -114,8 +114,10 @@ describe("sign-in and /me", () => {
 describe("data from the API", () => {
   it("the team planner roster comes from /members (not from a built-in list)", async () => {
     mockApi({ me: meAdmin });
+    fakePlanner({ me: meAdmin, layout: [{ name: "Main", teams: 2 }] });
     render(<App />);
     await userEvent.setup({ delay: null }).click(await screen.findByRole("button", { name: "Team planner" }));
+    await screen.findByText("Other members"); // the plan has loaded; unplaced members are listed for the admin
     for (const member of wireMembers) expect(screen.getAllByText(member.ign).length).toBeGreaterThan(0);
   });
 

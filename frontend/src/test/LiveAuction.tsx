@@ -19,7 +19,6 @@ export default function LiveAuction({ notify = () => {} }: { notify?: (message: 
     isAdmin: signedIn && asAdmin,
     isThai: false,
     notify,
-    onMemberRemoved: admin.dropAdminMember,
   });
   return (
     <>

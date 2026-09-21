@@ -22,8 +22,8 @@ type Props = {
 };
 
 /**
- * The signed-in tools. The roster, jobs and events START from the API data; the auction board, admin panel,
- * attendance, team assignments and roster/job edits are still local mock state (WP12-WP15 replace them).
+ * The signed-in tools. The roster, jobs and events START from the API data; attendance (WP12) and the team plan
+ * (WP13) use the API. Still local mock state: the auction board and its admin panel (WP14/WP15) and job edits (WP15).
  */
 export default function Workspace({ session, data, isThai, onToggleLanguage, notice, notify, clearNotice }: Props) {
   const { activeView, setActiveView } = useHashView();
@@ -35,7 +35,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
     isAdmin: session.isAdmin,
     isThai,
     notify,
-    onMemberRemoved: admin.dropAdminMember,
   });
 
   return (
@@ -95,14 +94,8 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
             isAdmin={session.isAdmin}
             jobs={guild.jobs}
             members={guild.members}
-            assignments={guild.teamAssignments}
-            onAssign={guild.assignMember}
-            onRemove={guild.removeMemberFromTeam}
-            onClear={guild.clearTeams}
-            onAddMember={guild.addMember}
-            onRenameMember={guild.renameMember}
-            onSetMemberJob={guild.setMemberJob}
-            onRemoveMember={guild.removeMember}
+            events={data.events}
+            activities={data.activities}
             onSaveJobs={guild.saveJobs}
             onNotice={notify}
           />

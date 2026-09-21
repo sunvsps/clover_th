@@ -153,3 +153,137 @@ export function fakeRegistrations(opts: { me: Me; capacity?: Record<string, numb
     externalUnregister: (key: string, eventId: string, memberId: string) => fakeSet(key, eventId, memberId, "NONE"),
   };
 }
+
+type PlanRegStatus = "JOINED" | "WAITLISTED" | "LEAVE" | "NONE";
+type FakePlacement = { memberId: string; teamId: number; slot: number; source: "ADMIN" | "COPY" | "AUTO_BACKFILL"; vacated?: string; at?: string };
+export type FakeLayout = { name: string; teams: number; size?: number; archived?: boolean }[];
+
+/**
+ * In-memory stand-in for the planner API of ONE occurrence (GET plan, PUT placement, clear, copy, undo-backfill),
+ * with the real version rule (409 PLAN_VERSION_CONFLICT carrying the current plan). Registered members that are not
+ * placed are the reserves, in registration order.
+ */
+export function fakePlanner(opts: { me: Me; layout: FakeLayout; registered?: string[]; autoBackfill?: boolean }) {
+  let version = 0;
+  let nextTeamId = 1;
+  const rooms = opts.layout.map((r, i) => ({
+    id: i + 1,
+    key: r.name.toLowerCase(),
+    name: r.name,
+    archived: false,
+    teams: Array.from({ length: r.teams }, (_, n) => ({ id: nextTeamId++, name: `${r.name} ${n + 1}`, size: r.size ?? 5, archived: r.archived ?? false })),
+  }));
+  const registered = [...(opts.registered ?? [])];
+  const regOf = new Map<string, PlanRegStatus>(registered.map((id) => [id, "JOINED"]));
+  let placements: FakePlacement[] = [];
+  const calls: { method: string; path: string; body: unknown }[] = [];
+  const teams = () => rooms.flatMap((r) => r.teams);
+
+  const wirePlan = () => ({
+    eventId: "e", date: "d", startsAt: null, version, autoBackfill: opts.autoBackfill ?? false,
+    rooms: rooms.map((r) => ({
+      id: r.id, key: r.key, name: r.name, archived: false,
+      capacity: r.teams.filter((t) => !t.archived).reduce((n, t) => n + t.size, 0),
+      teams: r.teams.map((t) => ({
+        id: t.id, name: t.name, size: t.size, archived: t.archived,
+        placements: placements.filter((p) => p.teamId === t.id).sort((a, b) => a.slot - b.slot).map((p) => ({
+          memberId: p.memberId, slot: p.slot, regStatus: regOf.get(p.memberId) ?? "NONE", source: p.source,
+          ...(p.source === "AUTO_BACKFILL" ? { backfill: { vacatedMemberId: p.vacated ?? null, reason: "UNREGISTERED", at: p.at ?? "2026-09-22T10:00:00Z" } } : {}),
+        })),
+      })),
+    })),
+    reserves: registered.filter((id) => regOf.get(id) === "JOINED" && !placements.some((p) => p.memberId === id)).map((id, i) => ({ memberId: id, registeredAt: "2026-09-21T00:00:00Z", order: i + 1 })),
+  });
+  const err = (code: string, status: number, details: Record<string, unknown> = {}) => HttpResponse.json({ error: { code, message: code, details } }, { status });
+
+  const guard = (body: { expectedVersion: number }) => {
+    if (!opts.me.isAdmin) return err("ADMIN_REQUIRED", 403);
+    if (body.expectedVersion !== version) return err("PLAN_VERSION_CONFLICT", 409, { currentVersion: version, plan: wirePlan() });
+    return null;
+  };
+
+  server.use(
+    http.get("*/api/v1/events/:eventId/occurrences/:date/plan", ({ params, request }) => {
+      calls.push({ method: "GET", path: new URL(request.url).pathname, body: null });
+      return HttpResponse.json({ ...wirePlan(), eventId: String(params.eventId), date: String(params.date) });
+    }),
+    http.put("*/api/v1/events/:eventId/occurrences/:date/plan/placements/:memberId", async ({ request, params }) => {
+      const body = (await request.json()) as { teamId: number | null; slot?: number; expectedVersion: number };
+      calls.push({ method: "PUT", path: new URL(request.url).pathname, body });
+      const bad = guard(body);
+      if (bad) return bad;
+      const memberId = String(params.memberId);
+      const cur = placements.find((p) => p.memberId === memberId);
+      if (body.teamId === null) {
+        if (cur) { placements = placements.filter((p) => p !== cur); version++; }
+        return HttpResponse.json({ version });
+      }
+      const team = teams().find((t) => t.id === body.teamId);
+      if (!team) return err("NOT_FOUND", 404);
+      let slot = body.slot;
+      if (slot === undefined) {
+        const used = new Set(placements.filter((p) => p.teamId === team.id).map((p) => p.slot));
+        slot = Array.from({ length: team.size }, (_, i) => i + 1).find((s) => !used.has(s));
+        if (slot === undefined) return err("TEAM_FULL", 409);
+      }
+      const occupant = placements.find((p) => p.teamId === team.id && p.slot === slot);
+      placements = placements.filter((p) => p !== cur && p !== occupant);
+      placements.push({ memberId, teamId: team.id, slot, source: "ADMIN" });
+      if (occupant && cur) placements.push({ memberId: occupant.memberId, teamId: cur.teamId, slot: cur.slot, source: "ADMIN" });
+      version++;
+      return HttpResponse.json({ version });
+    }),
+    http.post("*/api/v1/events/:eventId/occurrences/:date/plan/clear", async ({ request }) => {
+      const body = (await request.json()) as { expectedVersion: number };
+      calls.push({ method: "POST", path: new URL(request.url).pathname, body });
+      const bad = guard(body);
+      if (bad) return bad;
+      const removed = placements.length;
+      placements = [];
+      if (removed) version++;
+      return HttpResponse.json({ version, removed });
+    }),
+    http.post("*/api/v1/events/:eventId/occurrences/:date/plan/copy-from-previous", async ({ request }) => {
+      const body = (await request.json()) as { expectedVersion: number };
+      calls.push({ method: "POST", path: new URL(request.url).pathname, body });
+      const bad = guard(body);
+      if (bad) return bad;
+      return HttpResponse.json({ copied: 3, skipped: [{ memberId: "x", reason: "MEMBER_INACTIVE" }], version, sourceDate: "2026-09-15" });
+    }),
+    http.post("*/api/v1/events/:eventId/occurrences/:date/plan/placements/:memberId/undo-backfill", async ({ request, params }) => {
+      const body = (await request.json()) as { expectedVersion: number };
+      calls.push({ method: "POST", path: new URL(request.url).pathname, body });
+      const bad = guard(body);
+      if (bad) return bad;
+      placements = placements.filter((p) => p.memberId !== String(params.memberId));
+      version++;
+      return HttpResponse.json({ version, cancelledNotifications: 0 });
+    }),
+  );
+
+  return {
+    calls,
+    teamId: (name: string) => teams().find((t) => t.name === name)!.id,
+    get version() { return version; },
+    /** place someone directly (as if an admin had done it earlier) */
+    seedPlacement: (memberId: string, teamName: string, slot: number, reg: PlanRegStatus = "JOINED") => {
+      placements.push({ memberId, teamId: teams().find((t) => t.name === teamName)!.id, slot, source: "ADMIN" });
+      regOf.set(memberId, reg);
+      if (reg === "JOINED" && !registered.includes(memberId)) registered.push(memberId);
+    },
+    /** someone else's change: the version moves without this client knowing */
+    externalPlace: (memberId: string, teamName: string, slot: number) => {
+      placements.push({ memberId, teamId: teams().find((t) => t.name === teamName)!.id, slot, source: "ADMIN" });
+      version++;
+    },
+    /** a placed member unregisters and the first reserve is auto-placed into the vacated slot */
+    externalBackfill: (vacated: string, promoted: string) => {
+      const p = placements.find((x) => x.memberId === vacated)!;
+      placements = placements.filter((x) => x !== p);
+      registered.splice(registered.indexOf(vacated), 1);
+      regOf.delete(vacated);
+      placements.push({ memberId: promoted, teamId: p.teamId, slot: p.slot, source: "AUTO_BACKFILL", vacated, at: "2026-09-22T11:00:00Z" });
+      version++;
+    },
+  };
+}
