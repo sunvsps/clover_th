@@ -1,7 +1,9 @@
 import { useState, type DragEvent, type FormEvent } from "react";
-import { BarChart3, Check, Copy, Eraser, Eye, GripVertical, Palette, Pencil, Plus, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
+import { Copy, Eraser, Eye, GripVertical, Palette, Pencil, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
 import { findJob, jobStyle, SUBTEAM_SIZE, SUBTEAMS_PER_TEAM, teamNames, type GuildMember, type Job } from "../data/guild";
-import JobChart from "./JobChart";
+import JobChartCard from "./JobChartCard";
+import JobManagerDialog from "./JobManagerDialog";
+import { useJobManager } from "../hooks/useJobManager";
 
 export type TeamAssignments = Record<string, string>; // member name -> "A-3"
 
@@ -46,9 +48,7 @@ export default function TeamPlanner({
   const [newName, setNewName] = useState("");
   const [newJob, setNewJob] = useState(jobs[0]?.id ?? 1);
   const [editing, setEditing] = useState<{ name: string; value: string; job: number } | null>(null);
-  const [jobDraft, setJobDraft] = useState<Job[] | null>(null); // open job manager = non-null draft
-  const [newJobLabel, setNewJobLabel] = useState("");
-  const [newJobColor, setNewJobColor] = useState("#6c8cff");
+  const jobManager = useJobManager(jobs, onSaveJobs);
   const [slotSearch, setSlotSearch] = useState<{ slot: string; query: string } | null>(null);
 
   const canEdit = isAdmin;
@@ -111,31 +111,6 @@ export default function TeamPlanner({
     if (member && editing.job !== member.job) onSetMemberJob(editing.name, editing.job);
     if (next && next !== editing.name && !onRenameMember(editing.name, next)) return;
     setEditing(null);
-  }
-
-  function openJobManager() {
-    setJobDraft(jobs.map((job) => ({ ...job })));
-    setNewJobLabel("");
-  }
-
-  function patchDraft(id: number, patch: Partial<Job>) {
-    setJobDraft((draft) => draft && draft.map((job) => (job.id === id ? { ...job, ...patch } : job)));
-  }
-
-  function addDraftJob(event: FormEvent) {
-    event.preventDefault();
-    const label = newJobLabel.trim();
-    if (!label || !jobDraft) return;
-    const id = Math.max(0, ...jobDraft.map((job) => job.id)) + 1;
-    setJobDraft([...jobDraft, { id, label, color: newJobColor }]);
-    setNewJobLabel("");
-  }
-
-  const draftValid = !!jobDraft && jobDraft.every((job) => job.label.trim()) && new Set(jobDraft.map((job) => job.label.trim().toLowerCase())).size === jobDraft.length;
-
-  function saveJobs() {
-    if (!jobDraft || !draftValid) return;
-    if (onSaveJobs(jobDraft.map((job) => ({ ...job, label: job.label.trim() })))) setJobDraft(null);
   }
 
   const slotMatches = (query: string) =>
@@ -334,7 +309,7 @@ export default function TeamPlanner({
             <Copy size={14} /> {isThai ? "คัดลอกรายชื่อทีม" : "Copy plan"}
           </button>
           {canEdit && (
-            <button type="button" className="copy-button" onClick={openJobManager}>
+            <button type="button" className="copy-button" onClick={jobManager.open}>
               <Palette size={14} /> {isThai ? "จัดการอาชีพ" : "Manage jobs"}
             </button>
           )}
@@ -347,22 +322,14 @@ export default function TeamPlanner({
       </div>
 
       <div className="team-overview">
-        <div className="chart-card">
-          <div className="pool-title">
-            <strong>
-              <BarChart3 size={14} /> {isThai ? "จำนวนสมาชิกแต่ละอาชีพ" : "Members per job"}
-            </strong>
-            <span className="chart-card-meta">
-              {members.length} {isThai ? "คน" : "members"}
-              {canEdit && (
-                <button type="button" className="inline-edit-button" onClick={openJobManager}>
-                  <Pencil size={11} /> {isThai ? "แก้ชื่อ / สีอาชีพ" : "Edit jobs"}
-                </button>
-              )}
-            </span>
-          </div>
-          <JobChart jobs={jobs} members={members} assignments={assignments} isThai={isThai} />
-        </div>
+        <JobChartCard
+          jobs={jobs}
+          members={members}
+          assignments={assignments}
+          isThai={isThai}
+          canEdit={canEdit}
+          onEditJobs={jobManager.open}
+        />
         {canEdit && (
           <form className="add-member-card" onSubmit={submitNewMember}>
             <p className="eyebrow">
@@ -546,78 +513,7 @@ export default function TeamPlanner({
         </div>
       )}
 
-      {jobDraft && canEdit && (
-        <div className="page-modal-backdrop" role="presentation" onClick={() => setJobDraft(null)}>
-          <section className="page-modal job-manager" role="dialog" aria-modal="true" aria-labelledby="job-manager-title" onClick={(event) => event.stopPropagation()}>
-            <div className="page-modal-header">
-              <div>
-                <p className="eyebrow">
-                  <Palette size={11} /> {isThai ? "แอดมิน: จัดการอาชีพ" : "ADMIN: MANAGE JOBS"}
-                </p>
-                <h2 id="job-manager-title">{isThai ? "อาชีพและสีการ์ด" : "Jobs & card colours"}</h2>
-                <small className="event-dialog-status">
-                  {isThai ? "แก้ชื่อหรือสีแล้วกดบันทึก ลบได้เฉพาะอาชีพที่ไม่มีสมาชิกใช้" : "Edit names or colours, then press Save. Only unused jobs can be deleted."}
-                </small>
-              </div>
-              <button type="button" className="modal-close" onClick={() => setJobDraft(null)} aria-label="Close">
-                ×
-              </button>
-            </div>
-            <ul className="job-list">
-              {jobDraft.map((job) => {
-                const used = members.filter((member) => member.job === job.id).length;
-                const duplicate = jobDraft.some((other) => other.id !== job.id && other.label.trim().toLowerCase() === job.label.trim().toLowerCase() && job.label.trim());
-                return (
-                  <li key={job.id} className={duplicate || !job.label.trim() ? "invalid" : ""}>
-                    <label className="color-well" style={jobStyle(job)} title={isThai ? "เลือกสี" : "Pick colour"}>
-                      <input type="color" value={job.color} onChange={(event) => patchDraft(job.id, { color: event.target.value })} aria-label={`${job.label} colour`} />
-                    </label>
-                    <input
-                      type="text"
-                      value={job.label}
-                      maxLength={30}
-                      placeholder={isThai ? "ชื่ออาชีพ" : "Job name"}
-                      onChange={(event) => patchDraft(job.id, { label: event.target.value })}
-                      aria-label="Job name"
-                    />
-                    <span className="job-count">
-                      {used} {isThai ? "คน" : ""}
-                    </span>
-                    <button
-                      type="button"
-                      className="chip-tool remove"
-                      disabled={used > 0}
-                      title={used > 0 ? (isThai ? "ยังมีสมาชิกใช้อาชีพนี้" : "Still in use") : isThai ? "ลบอาชีพ" : "Delete job"}
-                      aria-label={isThai ? "ลบอาชีพ" : "Delete job"}
-                      onClick={() => setJobDraft(jobDraft.filter((entry) => entry.id !== job.id))}
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-            <form className="job-add" onSubmit={addDraftJob}>
-              <label className="color-well" style={jobStyle({ id: 0, label: "", color: newJobColor })} title={isThai ? "เลือกสี" : "Pick colour"}>
-                <input type="color" value={newJobColor} onChange={(event) => setNewJobColor(event.target.value)} aria-label={isThai ? "สีอาชีพใหม่" : "New job colour"} />
-              </label>
-              <input type="text" value={newJobLabel} maxLength={30} placeholder={isThai ? "ชื่ออาชีพใหม่" : "New job name"} onChange={(event) => setNewJobLabel(event.target.value)} />
-              <button type="submit" className="copy-button" disabled={!newJobLabel.trim()}>
-                <Plus size={13} /> {isThai ? "เพิ่มในรายการ" : "Add to list"}
-              </button>
-            </form>
-            <div className="editor-actions">
-              {!draftValid && <span className="form-error">{isThai ? "ชื่ออาชีพต้องไม่ว่างและไม่ซ้ำกัน" : "Job names must be filled in and unique."}</span>}
-              <button type="button" className="copy-button" onClick={() => setJobDraft(null)}>
-                {isThai ? "ยกเลิก" : "Cancel"}
-              </button>
-              <button type="button" className="admin-button" disabled={!draftValid} onClick={saveJobs}>
-                <Check size={13} /> {isThai ? "บันทึก" : "Save"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+      {canEdit && <JobManagerDialog manager={jobManager} members={members} isThai={isThai} />}
     </section>
   );
 }
