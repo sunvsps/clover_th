@@ -48,6 +48,8 @@ export function mockApi({ me = meAdmin }: { me?: Me | null } = {}) {
     http.get("*/api/v1/events", () => HttpResponse.json(wireEvents)),
     http.get("*/api/v1/activities", () => HttpResponse.json(wireActivities)),
     http.get("*/api/v1/registrations", () => HttpResponse.json({ from: "", to: "", serverTime: new Date().toISOString(), occurrences: {} })),
+    http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [] })),
+    http.get("*/api/v1/auctions/queues", () => HttpResponse.json([])),
     http.post("*/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
   );
 }
@@ -285,5 +287,142 @@ export function fakePlanner(opts: { me: Me; layout: FakeLayout; registered?: str
       placements.push({ memberId: promoted, teamId: p.teamId, slot: p.slot, source: "AUTO_BACKFILL", vacated, at: "2026-09-22T11:00:00Z" });
       version++;
     },
+  };
+}
+
+export type FakeItem = { id: number; name: string; category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC"; winner?: string; queuePos?: number };
+export type FakeRound = {
+  id: number;
+  type: "LIVE_CLAIM" | "QUEUE_RANKED";
+  name: string;
+  status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+  opensAt?: string;
+  closesAt?: string;
+  winCap?: number;
+  items: FakeItem[];
+  eligible?: string[];
+  leftoverRoundId?: number;
+};
+
+/**
+ * In-memory stand-in for the auction API (rounds with ETag/304, claim/release with the real error codes, results,
+ * queues, own preferences). `serverNow` is the server's clock; the browser clock may be set to anything else.
+ */
+export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () => number; queues?: Record<string, string[]> }) {
+  const rounds = new Map(opts.rounds.map((r) => [r.id, r]));
+  const queues: Record<string, string[]> = { GEAR: [], CARD: [], RELIC: [], ...opts.queues };
+  const prefs = new Map<number, number[]>();
+  let version = 1;
+  let rateLimitNext = false;
+  const calls: { method: string; path: string; body?: unknown; ifNoneMatch?: string | null }[] = [];
+  const err = (code: string, status: number, details: Record<string, unknown> = {}, headers?: Record<string, string>) =>
+    HttpResponse.json({ error: { code, message: code, details } }, { status, headers });
+  const stamp = () => ({ "X-Server-Time": new Date(opts.serverNow()).toISOString() });
+  const wireItem = (i: FakeItem) => ({ id: i.id, name: i.name, category: i.category, rarity: null, imageUrl: null, winner: i.winner ? { memberId: i.winner, wonAt: "2026-09-21T10:00:00Z", queuePos: i.queuePos ?? null } : null });
+  const summary = (r: FakeRound) => ({
+    id: r.id, type: r.type, name: r.name, status: r.status, durationSec: 300, winCap: r.type === "LIVE_CLAIM" ? (r.winCap ?? 5) : null,
+    startDelaySec: 3, opensAt: r.opensAt ?? null, closesAt: r.closesAt ?? null,
+  });
+  const isOpenWindow = (r: FakeRound) => r.status === "OPEN" && (!r.opensAt || opts.serverNow() >= Date.parse(r.opensAt)) && (!r.closesAt || opts.serverNow() < Date.parse(r.closesAt));
+  const mine = (r: FakeRound) => r.items.filter((i) => i.winner === opts.me.memberId);
+  const visible = (r?: FakeRound) => (r && (opts.me.isAdmin || r.status !== "DRAFT") ? r : undefined);
+
+  server.use(
+    http.get("*/api/v1/auctions/rounds", () =>
+      HttpResponse.json({ serverTime: new Date(opts.serverNow()).toISOString(), rounds: [...rounds.values()].filter((r) => visible(r)).map((r) => ({ ...summary(r), itemCount: r.items.length })).reverse() }, { headers: stamp() }),
+    ),
+    http.get("*/api/v1/auctions/rounds/:id", ({ request, params }) => {
+      const r = visible(rounds.get(Number(params.id)));
+      const inm = request.headers.get("if-none-match");
+      calls.push({ method: "GET", path: new URL(request.url).pathname, ifNoneMatch: inm });
+      if (!r) return err("NOT_FOUND", 404);
+      const etag = `"v${version}-${opts.me.memberId}-${r.status}"`;
+      if (inm === etag) return new HttpResponse(null, { status: 304, headers: { ...stamp(), ETag: etag } });
+      return HttpResponse.json(
+        { ...summary(r), serverTime: new Date(opts.serverNow()).toISOString(), items: r.items.map(wireItem), myWinCount: mine(r).length, eligibleCategories: r.type === "QUEUE_RANKED" ? (r.eligible ?? []) : [] },
+        { headers: { ...stamp(), ETag: etag } },
+      );
+    }),
+    http.post("*/api/v1/auctions/rounds/:id/items/:itemId/claim", ({ request, params }) => {
+      calls.push({ method: "POST", path: new URL(request.url).pathname });
+      if (rateLimitNext) { rateLimitNext = false; return err("RATE_LIMITED", 429, {}, { "Retry-After": "2" }); }
+      const r = rounds.get(Number(params.id))!;
+      if (!isOpenWindow(r)) return err("ROUND_CLOSED", 409);
+      const item = r.items.find((i) => i.id === Number(params.itemId));
+      if (!item) return err("NOT_FOUND", 404);
+      if (item.winner === opts.me.memberId) return HttpResponse.json({ item: wireItem(item), myWinCount: mine(r).length });
+      if (mine(r).length >= (r.winCap ?? 5)) return err("CLAIM_CAP_REACHED", 409, { winCap: r.winCap ?? 5 });
+      if (item.winner) return err("ITEM_ALREADY_CLAIMED", 409, { winner: wireItem(item).winner });
+      item.winner = opts.me.memberId;
+      version++;
+      return HttpResponse.json({ item: wireItem(item), myWinCount: mine(r).length });
+    }),
+    http.delete("*/api/v1/auctions/rounds/:id/items/:itemId/claim", ({ request, params }) => {
+      calls.push({ method: "DELETE", path: new URL(request.url).pathname });
+      const r = rounds.get(Number(params.id))!;
+      const item = r.items.find((i) => i.id === Number(params.itemId))!;
+      if (item.winner && item.winner !== opts.me.memberId) return err("NOT_YOUR_CLAIM", 403);
+      item.winner = undefined;
+      version++;
+      return HttpResponse.json({ item: wireItem(item), myWinCount: mine(r).length });
+    }),
+    http.get("*/api/v1/auctions/rounds/:id/results", ({ params }) => {
+      const r = visible(rounds.get(Number(params.id)));
+      if (!r) return err("NOT_FOUND", 404);
+      if (r.status !== "CLOSED") return err("ROUND_NOT_CLOSED", 409);
+      return HttpResponse.json({ roundId: r.id, status: "CLOSED", closedAt: "2026-09-21T10:05:00Z", serverTime: new Date(opts.serverNow()).toISOString(), items: r.items.map(wireItem), leftoverRoundId: r.leftoverRoundId ?? null });
+    }),
+    http.get("*/api/v1/auctions/rounds/:id/results/me", ({ params }) => {
+      const r = rounds.get(Number(params.id))!;
+      return HttpResponse.json({ roundId: r.id, status: r.status, serverTime: new Date(opts.serverNow()).toISOString(), items: mine(r).map(wireItem), myWinCount: mine(r).length });
+    }),
+    http.get("*/api/v1/auctions/queues", () =>
+      HttpResponse.json(
+        Object.entries(queues).map(([category, ids]) => ({ category, length: ids.length, myRank: ids.indexOf(opts.me.memberId) >= 0 ? ids.indexOf(opts.me.memberId) + 1 : null, entries: ids.map((memberId, i) => ({ rank: i + 1, memberId })) })),
+      ),
+    ),
+    http.put("*/api/v1/auctions/queues/:category/me", ({ params, request }) => {
+      calls.push({ method: "PUT", path: new URL(request.url).pathname });
+      const q = queues[String(params.category)]!;
+      if (!q.includes(opts.me.memberId)) q.push(opts.me.memberId);
+      return HttpResponse.json({ category: params.category, length: q.length, myRank: q.indexOf(opts.me.memberId) + 1 });
+    }),
+    http.delete("*/api/v1/auctions/queues/:category/me", ({ params, request }) => {
+      calls.push({ method: "DELETE", path: new URL(request.url).pathname });
+      const q = queues[String(params.category)]!;
+      const i = q.indexOf(opts.me.memberId);
+      if (i >= 0) q.splice(i, 1);
+      return HttpResponse.json({ category: params.category, length: q.length, myRank: null });
+    }),
+    http.get("*/api/v1/auctions/rounds/:id/preferences/me", ({ params }) => HttpResponse.json({ roundId: Number(params.id), itemIds: prefs.get(Number(params.id)) ?? [] })),
+    http.put("*/api/v1/auctions/rounds/:id/preferences/me", async ({ params, request }) => {
+      const body = (await request.json()) as { itemIds: number[] };
+      calls.push({ method: "PUT", path: new URL(request.url).pathname, body });
+      const r = rounds.get(Number(params.id))!;
+      if (r.status !== "OPEN") return err("ROUND_CLOSED", 409);
+      for (const id of body.itemIds) {
+        const item = r.items.find((i) => i.id === id);
+        if (!item) return err("INVALID_PREFERENCE_LIST", 422);
+        if (!(r.eligible ?? []).includes(item.category)) return err("NOT_ELIGIBLE_FOR_CATEGORY", 409, { category: item.category });
+      }
+      prefs.set(r.id, body.itemIds);
+      return HttpResponse.json({ roundId: r.id, itemIds: body.itemIds });
+    }),
+  );
+
+  return {
+    calls,
+    prefs,
+    /** another member claims an item behind this client's back */
+    claimBy: (roundId: number, itemId: number, memberId: string) => { rounds.get(roundId)!.items.find((i) => i.id === itemId)!.winner = memberId; version++; },
+    /** the round closes with these winners (itemId -> memberId, queuePos) */
+    close: (roundId: number, winners: Record<number, { memberId: string; queuePos?: number }> = {}) => {
+      const r = rounds.get(roundId)!;
+      r.status = "CLOSED";
+      for (const [id, w] of Object.entries(winners)) { const it = r.items.find((i) => i.id === Number(id))!; it.winner = w.memberId; it.queuePos = w.queuePos; }
+      version++;
+    },
+    setQueue: (category: string, ids: string[]) => { queues[category] = ids; },
+    rateLimitNext: () => { rateLimitNext = true; },
   };
 }

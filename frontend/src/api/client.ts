@@ -6,6 +6,8 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: Record<string, unknown>;
+  /** from the Retry-After header (RATE_LIMITED, service busy), in seconds */
+  retryAfterSec?: number;
   constructor(status: number, code: string, message: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = "ApiError";
@@ -30,7 +32,12 @@ export const onUnauthorized = (handler: (() => void) | null) => {
   unauthorizedHandler = handler;
 };
 
-type Options = { body?: unknown; query?: Record<string, string | number | undefined>; signal?: AbortSignal };
+type Options = {
+  body?: unknown;
+  query?: Record<string, string | number | undefined>;
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+};
 
 function buildUrl(path: string, query?: Options["query"]) {
   const url = new URL(`${API_BASE}${path}`, window.location.origin);
@@ -39,6 +46,13 @@ function buildUrl(path: string, query?: Options["query"]) {
 }
 
 async function parseError(res: Response): Promise<ApiError> {
+  const error = await parseErrorBody(res);
+  const retry = Number(res.headers.get("retry-after"));
+  if (Number.isFinite(retry) && retry > 0) error.retryAfterSec = retry;
+  return error;
+}
+
+async function parseErrorBody(res: Response): Promise<ApiError> {
   let body: unknown = null;
   try {
     body = await res.json();
@@ -63,7 +77,7 @@ async function parseError(res: Response): Promise<ApiError> {
  * and every `serverTime` fed to the server clock.
  */
 export async function request<T>(method: string, path: string, options: Options = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
   if (WRITE_METHODS.has(method)) headers["X-Requested-With"] = "clover-web";
   let body: string | undefined;
   if (options.body !== undefined) {
@@ -97,6 +111,39 @@ export async function request<T>(method: string, path: string, options: Options 
   const bodyTime = (json as { serverTime?: unknown } | null)?.serverTime;
   if (typeof bodyTime === "string") serverClock.observe(bodyTime, sentAt, receivedAt);
   return json as T;
+}
+
+/**
+ * Conditional GET for polling: sends `If-None-Match` and reports `notModified` on a 304 (the caller keeps what it has).
+ * The server clock is still updated from the 304's `X-Server-Time`.
+ */
+export async function conditionalGet<T>(path: string, etag: string | null, signal?: AbortSignal): Promise<{ notModified: true } | { notModified: false; data: T; etag: string | null }> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (etag) headers["If-None-Match"] = etag;
+  const sentAt = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path), { method: "GET", headers, credentials: "include", signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ApiError(0, "NETWORK_ERROR", "Cannot reach the server");
+  }
+  const receivedAt = Date.now();
+  const headerTime = res.headers.get("x-server-time");
+  if (headerTime) serverClock.observe(headerTime, sentAt, receivedAt);
+  if (res.status === 304) return { notModified: true };
+  if (!res.ok) {
+    const error = await parseError(res);
+    if (res.status === 401 && error.code === "AUTH_REQUIRED") unauthorizedHandler?.();
+    throw error;
+  }
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    throw new ApiError(res.status, "INVALID_RESPONSE", "The server sent a response that is not JSON");
+  }
+  return { notModified: false, data: json as T, etag: res.headers.get("etag") };
 }
 
 export const get = <T>(path: string, options?: Options) => request<T>("GET", path, options);

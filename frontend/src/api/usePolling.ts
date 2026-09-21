@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { isApiError, type ApiError } from "./client";
 import { serverClock } from "./serverClock";
 
-type Options = { intervalMs: number; enabled?: boolean; /** changing it restarts polling (e.g. the visible week) */ key?: string };
+type Options = { intervalMs: number | ((latest: unknown) => number); enabled?: boolean; /** changing the key restarts polling (e.g. the visible week or round) */ key?: string };
 
 /**
  * Polls `fetcher` every `intervalMs` (immediately on mount), pausing while the tab is hidden and refreshing when it
@@ -15,8 +15,10 @@ export function usePolling<T>(fetcher: (signal: AbortSignal) => Promise<T>, { in
   const [offsetMs, setOffsetMs] = useState(serverClock.offset());
   const fetcherRef = useRef(fetcher);
   const refreshRef = useRef<() => void>(() => {});
+  const intervalRef = useRef(intervalMs);
   useEffect(() => {
     fetcherRef.current = fetcher;
+    intervalRef.current = intervalMs;
   });
 
   useEffect(() => {
@@ -24,6 +26,8 @@ export function usePolling<T>(fetcher: (signal: AbortSignal) => Promise<T>, { in
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
+    let latest: unknown = null;
+    const delay = () => (typeof intervalRef.current === "function" ? intervalRef.current(latest) : intervalRef.current);
 
     const tick = async () => {
       if (stopped) return;
@@ -32,6 +36,7 @@ export function usePolling<T>(fetcher: (signal: AbortSignal) => Promise<T>, { in
       try {
         const result = await fetcherRef.current(mine.signal);
         if (stopped || mine.signal.aborted) return;
+        latest = result;
         setData(result);
         setError(null);
         setOffsetMs(serverClock.offset());
@@ -39,7 +44,7 @@ export function usePolling<T>(fetcher: (signal: AbortSignal) => Promise<T>, { in
         if (stopped || mine.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
         setError(isApiError(err) ? err : null);
       }
-      if (!stopped && document.visibilityState !== "hidden") timer = setTimeout(tick, intervalMs);
+      if (!stopped && document.visibilityState !== "hidden") timer = setTimeout(tick, delay());
     };
     const onVisible = () => {
       if (document.visibilityState === "visible" && !stopped) {
@@ -67,7 +72,7 @@ export function usePolling<T>(fetcher: (signal: AbortSignal) => Promise<T>, { in
       window.removeEventListener("focus", onFocus);
       refreshRef.current = () => {};
     };
-  }, [enabled, intervalMs, key]);
+  }, [enabled, key]);
 
-  return { data, error, refresh: () => refreshRef.current(), serverNow: () => Date.now() + offsetMs };
+  return { data, error, setData, refresh: () => refreshRef.current(), serverNow: () => Date.now() + offsetMs };
 }

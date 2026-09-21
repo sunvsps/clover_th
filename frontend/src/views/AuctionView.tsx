@@ -1,290 +1,162 @@
-import { ArrowLeft, ArrowRight, Check, CircleHelp, Copy, Lock, LockOpen, Package, Trash2, Users } from "lucide-react";
+import { useState } from "react";
+import { Lock, LockOpen, Package } from "lucide-react";
+import { listRounds, usePolling, type RoundListEntry } from "../api";
 import type { GuildMember } from "../data/guild";
-import type { AdminControls } from "../hooks/useAdminControls";
-import type { AuctionState } from "../hooks/useAuction";
-import AdminView from "./AdminView";
-import { auctionCopy } from "./auctionCopy";
+import { useRound } from "../hooks/useRound";
+import { useServerNow } from "../hooks/useServerNow";
+import LiveClaimBoard from "./auction/LiveClaimBoard";
+import QueueRoundBoard from "./auction/QueueRoundBoard";
+import QueuesPanel from "./auction/QueuesPanel";
+import RoundResults from "./auction/RoundResults";
+import { formatClock, phaseOf, secondsUntil } from "./auction/auctionModel";
 
 type Props = {
-  /** false = the auction page is hidden (another feature view is active) but stays mounted, as before */
+  /** false = the page is hidden (another tool is active): it stays mounted (keeps an unsaved ranking) but stops polling */
   visible: boolean;
   isThai: boolean;
-  isAuthenticated: boolean;
   isAdmin: boolean;
-  ign: string;
+  memberId: string;
   members: GuildMember[];
-  auction: AuctionState;
-  admin: AdminControls;
   notify: (message: string) => void;
 };
 
-/** The item reservation board: intro, round status, admin controls, item pages, and the reservation summary. */
-export default function AuctionView({ visible, isThai, isAuthenticated, isAdmin, ign, members, auction, admin, notify }: Props) {
-  const copy = auctionCopy(isThai, auction.roundNumber);
-  const {
-    roundNumber,
-    countdown,
-    isAuctionStarted,
-    timeLeft,
-    isAuctionClosed,
-    formattedTime,
-    lockedPages,
-    heldPagesRound,
-    currentPage,
-    setCurrentPage,
-    pageBlocks,
-    reservations,
-    receivedItems,
-    claimedCount,
-  } = auction;
+const defaultRound = (rounds: RoundListEntry[]) =>
+  rounds.find((r) => r.status === "open") ?? rounds.find((r) => r.status === "closed") ?? rounds[0] ?? null;
+
+/** The auction page: round picker, the selected round (live claim, ranked queue, or results) and the queues. */
+export default function AuctionView({ visible, isThai, isAdmin, memberId, members, notify }: Props) {
+  const t = (en: string, th: string) => (isThai ? th : en);
+  const [tab, setTab] = useState<"rounds" | "queues">("rounds");
+  const [picked, setPicked] = useState<number | null>(null);
+  const byId = new Map(members.map((m) => [m.id, m.ign]));
+  const ignOf = (id: string) => byId.get(id) ?? (isThai ? "อดีตสมาชิก" : "Former member");
+
+  const list = usePolling(listRounds, { intervalMs: 6000, enabled: visible, key: "rounds" });
+  const rounds = list.data ?? [];
+  const roundId = picked ?? defaultRound(rounds)?.id ?? null;
+  const { round, refresh, apply, error } = useRound(roundId, visible && tab === "rounds");
+  const now = useServerNow(250, visible);
+  const phase = round ? phaseOf(round, now) : null;
+  const startsIn = round && phase === "starting" ? secondsUntil(round.opensAt, now) : 0;
+  const timeLeft = round && phase === "open" ? secondsUntil(round.closesAt, now) : 0;
+  const isOpenNow = phase === "open";
+
+  const phaseText: Record<string, string> = {
+    draft: t("Draft (admins only)", "ฉบับร่าง (เฉพาะแอดมิน)"),
+    starting: t("Starting soon", "กำลังจะเริ่ม"),
+    open: t("Open", "เปิดอยู่"),
+    ended: t("Time is up: closing…", "หมดเวลา: กำลังปิดรอบ…"),
+    closed: t("Closed", "ปิดแล้ว"),
+    cancelled: t("Cancelled", "ยกเลิกแล้ว"),
+  };
 
   return (
     <div id="top" className={`content ${!visible ? "hidden-view" : ""}`}>
       <section className="intro-row">
         <div>
           <p className="eyebrow">
-            <span className="live-dot" /> {copy.liveBoard}
+            <span className="live-dot" /> {t("LIVE AUCTION BOARD", "กระดานประมูลสด")}
           </p>
           <h1>
-            Guild item queue<span>.</span>
+            {t("Guild item auction", "ประมูลไอเท็มกิลด์")}
+            <span>.</span>
           </h1>
-          <p className="intro-copy">
-            {copy.intro}
-            {isThai ? (
-              ""
-            ) : (
-              <>
-                {" "}
-                <strong>Clover_TH</strong>.
-              </>
-            )}
-          </p>
         </div>
         <div className="season-card">
-          <span>ROUND {roundNumber === 0 ? "--" : String(roundNumber).padStart(2, "0")}</span>
-          <strong>{copy.guildAuction}</strong>
-          <small>{isAuctionClosed ? "Round closed" : `${formattedTime} remaining`}</small>
+          <span>{round ? (round.type === "liveClaim" ? "LIVE CLAIM" : "RANKED QUEUE") : "--"}</span>
+          <strong>{round?.name ?? t("No round yet", "ยังไม่มีรอบ")}</strong>
+          <small>{isOpenNow ? t(`${formatClock(timeLeft)} remaining`, `เหลือ ${formatClock(timeLeft)}`) : phase ? phaseText[phase] : ""}</small>
         </div>
       </section>
 
-      <section className={`round-panel ${isAuctionClosed ? "closed" : ""}`}>
-        <div className="round-status">
-          <span className="timer-icon">{isAuctionClosed ? <Lock size={17} /> : <LockOpen size={17} />}</span>
-          <div>
-            <strong>
-              {!isAuctionStarted ? copy.waiting : timeLeft <= 0 ? "Round time is over" : copy.auctionOpen}
-            </strong>
-            <small>
-              {isAuctionClosed
-                ? "Reservations are paused"
-                : isThai
-                  ? "จองก่อนหมดเวลา"
-                  : "Reserve before the timer reaches zero"}
-            </small>
-          </div>
-        </div>
-        <div className="timer">
-          <span>{copy.timeLeft}</span>
-          <strong>{roundNumber === 0 && countdown === null ? "--:--" : formattedTime}</strong>
-        </div>
-      </section>
-
-      <AdminView isAdmin={isAdmin} auction={auction} admin={admin} members={members} notify={notify} />
-
-      <section className="section-heading">
-        <div>
-          <p className="eyebrow">{copy.dropList}</p>
-          <h2>{copy.available}</h2>
-        </div>
-        <div className="top-page-nav">
-          <span>
-            Pages <strong>{currentPage === 1 ? "1 - 25" : "26 - 50"}</strong>
-          </span>
-          <button
-            className="page-group-button"
-            type="button"
-            onClick={() => setCurrentPage((page) => (page === 1 ? 2 : 1))}
-          >
-            {currentPage === 1 ? (
-              <>
-                {copy.next} <ArrowRight size={14} />
-              </>
-            ) : (
-              <>
-                <ArrowLeft size={14} /> {copy.previous}
-              </>
-            )}
-          </button>
-        </div>
-      </section>
-      <section className="page-blocks" aria-label="Auction item pages">
-        {pageBlocks.map((pageBlock) => {
-          const pageIsLocked = heldPagesRound ? !lockedPages.has(pageBlock.page) : lockedPages.has(pageBlock.page);
-          return (
-            <section
-              className={`page-block ${pageIsLocked ? "page-locked" : ""}`}
-              key={pageBlock.page}
-              aria-label={`Page ${pageBlock.page}`}
-            >
-              <div className="page-label">
-                Page <strong>{pageBlock.page}</strong>
-                {pageIsLocked && (
-                  <small>
-                    <Lock size={11} /> Locked
-                  </small>
-                )}
-              </div>
-              <div className="item-grid">
-                {pageBlock.items.map((item, itemIndex) => {
-                  const isMine = item.status === "claimed" && item.claimedBy === ign.trim();
-                  return (
-                    <article className={`item-card ${item.status}`} key={item.id}>
-                      <div className="item-info">
-                        <h3>Item {itemIndex + 1}</h3>
-                        {item.status === "claimed" && (
-                          <small className="reserved-by">Reserved by {item.claimedBy}</small>
-                        )}
-                      </div>
-                      <button
-                        className="claim-button"
-                        type="button"
-                        disabled={
-                          !isAuthenticated ||
-                          pageIsLocked ||
-                          (isAuctionClosed && !isMine) ||
-                          (item.status === "claimed" && !isMine)
-                        }
-                        onClick={() => auction.claimItem(item.id)}
-                      >
-                        {isMine ? (
-                          <>
-                            <Trash2 size={14} /> {copy.cancel}
-                          </>
-                        ) : (
-                          <>
-                            <Package size={14} /> {copy.reserve}
-                          </>
-                        )}
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })}
-      </section>
-
-      <div className="page-group-bottom">
-        <span>
-          Pages <strong>{currentPage === 1 ? "1 - 25" : "26 - 50"}</strong>
-        </span>
-        <button
-          className="page-group-button"
-          type="button"
-          onClick={() => setCurrentPage((page) => (page === 1 ? 2 : 1))}
-        >
-          {currentPage === 1 ? (
-            <>
-              Next <ArrowRight size={14} />
-            </>
-          ) : (
-            <>
-              <ArrowLeft size={14} /> Previous
-            </>
-          )}
+      <div className="auction-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "rounds"} className={tab === "rounds" ? "active" : ""} onClick={() => setTab("rounds")}>
+          <Package size={14} /> {t("Rounds", "รอบประมูล")}
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "queues"} className={tab === "queues" ? "active" : ""} onClick={() => setTab("queues")}>
+          {t("Queues", "คิว")}
         </button>
       </div>
 
-      <section className="summary-section">
-        <div className="section-heading summary-heading">
-          <div>
-            <p className="eyebrow">THE PAPER TRAIL</p>
-            <h2>{copy.summary}</h2>
-          </div>
-          <button className="copy-button" type="button" onClick={auction.copySummary}>
-            <Copy size={15} /> {copy.copyList}
-          </button>
-        </div>
-        <div className="summary-meta">
-          <span>
-            <Users size={15} /> {reservations.length} members
-          </span>
-          <span>
-            <Package size={15} /> {claimedCount} items reserved
-          </span>
-        </div>
-        <div className="summary-grid">
-          {reservations.map((reservation) => {
-            const isOwnReservation = reservation.member === ign.trim();
-            const sortedItems = [...reservation.items].sort((firstItem, secondItem) => {
-              const firstMatch = firstItem.match(/Page (\d+) \/ Item (\d+)/);
-              const secondMatch = secondItem.match(/Page (\d+) \/ Item (\d+)/);
-              if (!firstMatch || !secondMatch) return 0;
-              return (
-                Number(firstMatch[1]) - Number(secondMatch[1]) || Number(firstMatch[2]) - Number(secondMatch[2])
-              );
-            });
-            const allReceived = sortedItems.every((item) => receivedItems.has(`${reservation.member}:${item}`));
-            return (
-              <article className="summary-card" key={reservation.member}>
-                <div className="member-heading">
-                  <span className="member-avatar">{reservation.member.charAt(0).toUpperCase()}</span>
-                  <strong>{reservation.member}</strong>
-                  <span className="item-count">
-                    {sortedItems.length} {sortedItems.length === 1 ? "item" : "items"}
-                  </span>
-                  {isOwnReservation && (
-                    <button
-                      type="button"
-                      className="receive-all-button"
-                      onClick={() =>
-                        allReceived
-                          ? auction.undoAllReceived(reservation.member, sortedItems)
-                          : auction.markAllReceived(reservation.member, sortedItems)
-                      }
-                    >
-                      {allReceived ? copy.undoAll : copy.receivedAll}
-                    </button>
-                  )}
+      {tab === "queues" ? (
+        <QueuesPanel isThai={isThai} enabled={visible} ignOf={ignOf} notify={notify} />
+      ) : (
+        <>
+          {rounds.length > 0 && (
+            <label className="round-picker">
+              <span>{t("Round", "รอบ")}</span>
+              <select value={roundId ?? ""} onChange={(e) => setPicked(Number(e.target.value))} aria-label={t("Round", "รอบ")}>
+                {rounds.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    #{r.id} {r.name} · {r.type === "liveClaim" ? t("live claim", "จองสด") : t("ranked queue", "จัดอันดับคิว")} · {phaseText[r.status] ?? r.status}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {list.error && <p className="schedule-error" role="alert">{list.error.userMessage(isThai)}</p>}
+          {error && <p className="schedule-error" role="alert">{error.userMessage(isThai)}</p>}
+
+          {rounds.length === 0 && !list.error && (
+            <p className="empty-search" role="status">
+              {list.data ? t("There is no auction round yet. An admin will open one.", "ยังไม่มีรอบประมูล แอดมินจะเปิดรอบให้") : t("Loading…", "กำลังโหลด…")}
+            </p>
+          )}
+
+          {round && phase && (
+            <section className={`round-panel ${phase === "open" ? "" : "closed"}`} data-phase={phase}>
+              <div className="round-status">
+                <span className="timer-icon">{isOpenNow ? <LockOpen size={17} /> : <Lock size={17} />}</span>
+                <div>
+                  <strong>{phaseText[phase]}</strong>
+                  <small>
+                    {round.type === "liveClaim"
+                      ? t(`Claim up to ${round.winCap ?? 5} items. First come, first served.`, `จองได้สูงสุด ${round.winCap ?? 5} ชิ้น ใครมาก่อนได้ก่อน`)
+                      : t("Rank the items you want. One item per category is allocated by queue order when the round closes.", "จัดอันดับไอเท็มที่ต้องการ เมื่อปิดรอบจะจัดสรรตามลำดับคิวหมวดละหนึ่งชิ้น")}
+                  </small>
                 </div>
-                {sortedItems.map((item) => {
-                  const isReceived = receivedItems.has(`${reservation.member}:${item}`);
-                  return (
-                    <div className={`reserved-item ${isReceived ? "received" : ""}`} key={item}>
-                      <span />
-                      {item}
-                      {isReceived ? (
-                        <button
-                          type="button"
-                          className="undo-received-button"
-                          onClick={() => auction.undoReceived(reservation.member, item)}
-                        >
-                          {copy.undo}
-                        </button>
-                      ) : isOwnReservation ? (
-                        <button
-                          type="button"
-                          className="receive-button"
-                          onClick={() => auction.markItemReceived(reservation.member, item)}
-                        >
-                          <Check size={12} /> {copy.received}
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </article>
-            );
-          })}
+              </div>
+              <div className="timer">
+                <strong>{isOpenNow ? formatClock(timeLeft) : phase === "starting" ? formatClock(startsIn) : "--:--"}</strong>
+              </div>
+            </section>
+          )}
+
+          {round?.status === "draft" && (
+            <p className="empty-search" role="status">
+              {t("This is a draft round: only admins can see it. Editing and starting rounds is done through the admin API for now.", "นี่คือรอบฉบับร่าง เห็นได้เฉพาะแอดมิน ตอนนี้การแก้ไขและเริ่มรอบทำผ่าน API ของแอดมิน")}
+            </p>
+          )}
+
+          {round && phase && round.status !== "closed" && round.status !== "cancelled" && round.type === "liveClaim" && (
+            <LiveClaimBoard round={round} phase={phase} isThai={isThai} memberId={memberId} ignOf={ignOf} notify={notify} apply={apply} refresh={refresh} />
+          )}
+          {round && phase && round.status !== "closed" && round.status !== "cancelled" && round.type === "queueRanked" && (round.status === "open" || round.status === "draft") && (
+            <QueueRoundBoard key={round.id} round={round} phase={phase} isThai={isThai} ignOf={ignOf} notify={notify} />
+          )}
+          {round?.status === "closed" && (
+            <RoundResults key={round.id} round={round} isThai={isThai} isAdmin={isAdmin} memberId={memberId} ignOf={ignOf} onOpenRound={setPicked} />
+          )}
+          {round?.status === "cancelled" && <p className="empty-search">{t("This round was cancelled.", "รอบนี้ถูกยกเลิก")}</p>}
+        </>
+      )}
+
+      {phase === "starting" && startsIn > 0 && startsIn <= 5 && (
+        <div className="countdown-backdrop" role="status" aria-live="assertive">
+          <div className="countdown-modal">
+            <span>{round?.name}</span>
+            <strong>{startsIn}</strong>
+            <small>{t("Round starting", "รอบกำลังจะเริ่ม")}</small>
+          </div>
         </div>
-      </section>
-      <footer>
-        <span>CLOVER_TH</span>
-        <span>
-          Built for fair drops · <CircleHelp size={13} /> Need help?
-        </span>
-      </footer>
+      )}
+
+      {isAdmin && (
+        <p className="admin-note">
+          {t("Admin: creating, starting and closing rounds is not in this screen yet; use the admin API. You can open any round above, including drafts.", "แอดมิน: การสร้าง เริ่ม และปิดรอบยังไม่มีในหน้านี้ ใช้ผ่าน API ของแอดมิน คุณเปิดดูรอบใดก็ได้ รวมถึงฉบับร่าง")}
+        </p>
+      )}
     </div>
   );
 }

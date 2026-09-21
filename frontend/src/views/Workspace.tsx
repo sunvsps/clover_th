@@ -2,12 +2,9 @@ import { CalendarDays, Check, Package, Users, X } from "lucide-react";
 import type { GuildData } from "../api";
 import WeeklySchedule from "../components/WeeklySchedule";
 import TeamPlanner from "../components/TeamPlanner";
-import { useAdminControls } from "../hooks/useAdminControls";
-import { useAuction } from "../hooks/useAuction";
 import { useGuildState } from "../hooks/useGuildState";
 import { useHashView } from "../hooks/useHashView";
 import type { Session } from "../hooks/useSession";
-import AuctionOverlays from "./AuctionOverlays";
 import AuctionView from "./AuctionView";
 import TopBar from "./TopBar";
 
@@ -22,13 +19,11 @@ type Props = {
 };
 
 /**
- * The signed-in tools. The roster, jobs and events START from the API data; attendance (WP12) and the team plan
- * (WP13) use the API. Still local mock state: the auction board and its admin panel (WP14/WP15) and job edits (WP15).
+ * The signed-in tools. The roster, jobs and events START from the API data; attendance (WP12), the team plan (WP13)
+ * and the auctions (WP14) use the API. Still local mock state: only the job edits (WP15).
  */
 export default function Workspace({ session, data, isThai, onToggleLanguage, notice, notify, clearNotice }: Props) {
   const { activeView, setActiveView } = useHashView();
-  const auction = useAuction({ isAuthenticated: session.isAuthenticated, ign: session.ign, notify });
-  const admin = useAdminControls({ lockedPages: auction.lockedPages, setLockedPages: auction.setLockedPages, notify });
   const guild = useGuildState({
     initialMembers: data.members,
     initialJobs: data.jobs,
@@ -45,7 +40,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         onToggleLanguage={onToggleLanguage}
         onSwitchToUser={() => {
           session.switchToUser();
-          admin.setAdminConfigOpen(false);
         }}
       />
 
@@ -64,12 +58,9 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
       <AuctionView
         visible={activeView === "auction"}
         isThai={isThai}
-        isAuthenticated={session.isAuthenticated}
         isAdmin={session.isAdmin}
-        ign={session.ign}
+        memberId={session.memberId}
         members={guild.members}
-        auction={auction}
-        admin={admin}
         notify={notify}
       />
 
@@ -110,7 +101,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
           </button>
         </div>
       )}
-      <AuctionOverlays auction={auction} isThai={isThai} />
     </>
   );
 }
