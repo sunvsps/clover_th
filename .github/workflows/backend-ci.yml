@@ -1,0 +1,40 @@
+name: backend-ci
+on:
+  pull_request:
+    paths: ['backend/**', '.github/workflows/backend-ci.yml']
+  push:
+    branches: [main]
+    paths: ['backend/**']
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clover
+          POSTGRES_PASSWORD: clover
+          POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C.UTF-8'
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U clover" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://clover:clover@localhost:5432/ci_main?connection_limit=25&pool_timeout=10
+      SHADOW_DATABASE_URL: postgresql://clover:clover@localhost:5432/ci_shadow
+      TEST_DATABASE_ADMIN_URL: postgresql://clover:clover@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: PGPASSWORD=clover psql -h localhost -U clover -d postgres -c 'CREATE DATABASE ci_main' -c 'CREATE DATABASE ci_shadow'
+      - run: bash scripts/ci.sh

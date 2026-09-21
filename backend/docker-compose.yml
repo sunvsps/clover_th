@@ -1,0 +1,17 @@
+# Local Postgres for development and tests.
+# Host port defaults to 55432 to avoid clashing with other local databases.
+services:
+  db:
+    image: postgres:16
+    container_name: cloverth-postgres
+    environment:
+      POSTGRES_USER: clover
+      POSTGRES_PASSWORD: clover
+      POSTGRES_DB: clover
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C.UTF-8'
+    ports:
+      # dev only: bound to loopback so nobody on the network can reach this weak-password database
+      - '127.0.0.1:${DB_PORT:-55432}:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    command: ['postgres', '-c', 'max_connections=200', '-c', 'fsync=off']
