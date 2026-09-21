@@ -28,6 +28,7 @@ import registrationRoutes from './modules/registrations/routes.js';
 import csrf from './plugins/csrf.js';
 import errorHandler from './plugins/errorHandler.js';
 import { genReqId, default as requestId } from './plugins/requestId.js';
+import { requireAdmin } from './plugins/requireAdmin.js';
 import session from './plugins/session.js';
 import './types.js';
 
@@ -74,6 +75,7 @@ export async function buildApp(opts: BuildOptions) {
 
   const prisma = opts.prisma ?? new PrismaClient({ datasourceUrl: env.DATABASE_URL });
   app.decorate('env', env);
+  app.decorate('botFailures', new Map());
   app.decorate('prisma', prisma);
   app.decorate(
     'tx',
@@ -87,7 +89,16 @@ export async function buildApp(opts: BuildOptions) {
   await app.register(errorHandler);
   await app.register(helmet);
   await app.register(cookie, { secret: env.SESSION_SECRET });
-  await app.register(rateLimit, { global: false });
+  // Default budget for EVERY route (design 9): per member when signed in, per IP otherwise. It runs in preHandler so the
+  // session is already resolved. Individual routes override it with config.rateLimit (login, bot, claim/release);
+  // /healthz opts out. Failed authentication is limited separately (bot key guard, OAuth routes).
+  await app.register(rateLimit, {
+    global: true,
+    hook: 'preHandler',
+    max: (req) => (req.auth ? env.RATE_LIMIT_AUTH_PER_MIN : env.RATE_LIMIT_ANON_PER_MIN),
+    timeWindow: '1 minute',
+    keyGenerator: (req) => req.auth?.memberId ?? req.ip,
+  });
   await app.register(swagger, {
     openapi: { info: { title: 'Clover_TH API', version: '0.1.0' } },
     transform: jsonSchemaTransform,
@@ -95,7 +106,24 @@ export async function buildApp(opts: BuildOptions) {
   await app.register(csrf);
   await app.register(session);
 
-  app.get('/docs/json', { schema: { hide: true } }, async () => app.swagger());
+  // API responses are per-user and must not be stored by shared caches (the polling endpoint sets no-cache + ETag itself).
+  app.addHook('onSend', async (req, reply) => {
+    if (req.url.startsWith('/api/') && !reply.hasHeader('cache-control'))
+      reply.header('cache-control', 'no-store');
+  });
+
+  const docs =
+    env.DOCS_ACCESS === 'auto' ? (env.NODE_ENV === 'production' ? 'off' : 'public') : env.DOCS_ACCESS;
+  if (docs !== 'off') {
+    app.get(
+      '/docs/json',
+      {
+        schema: { hide: true },
+        ...(docs === 'admin' ? { onRequest: [requireAdmin] } : {}),
+      },
+      async () => app.swagger(),
+    );
+  }
 
   await app.register(healthRoutes);
   await app.register(authRoutes);

@@ -37,6 +37,16 @@ const schema = z
       .refine((a) => a.every((d) => digest.test(d)), 'each entry must be a sha256 hex digest (64 hex chars)'),
     /** Claim/release rate limit per member per second (design 9: 5). Tests raise it to exercise the cap. */
     CLAIM_RATE_MAX: z.coerce.number().int().min(1).max(100000).default(5),
+    /** Default request budget per minute: per member when signed in, per IP otherwise (design 9). */
+    RATE_LIMIT_AUTH_PER_MIN: z.coerce.number().int().min(1).max(1_000_000).default(600),
+    RATE_LIMIT_ANON_PER_MIN: z.coerce.number().int().min(1).max(1_000_000).default(120),
+    /** Wrong X-Bot-Key attempts per minute per IP before the bot routes answer 429 (brute-force guard). */
+    BOT_KEY_FAILS_PER_MIN: z.coerce.number().int().min(1).max(1_000_000).default(20),
+    /**
+     * Who may read the OpenAPI document at /docs/json: auto = public outside production, off in production;
+     * public | admin (signed-in admin only) | off.
+     */
+    DOCS_ACCESS: z.enum(['auto', 'public', 'admin', 'off']).default('auto'),
     TRUST_PROXY: z
       .enum(['true', 'false'])
       .default('false')

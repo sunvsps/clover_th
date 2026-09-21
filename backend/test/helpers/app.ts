@@ -24,6 +24,10 @@ export function testEnv(db: TestDb, mock?: MockDiscord, extra: Record<string, st
     DISCORD_API_BASE: mock?.url ?? 'http://127.0.0.1:9',
     FRONTEND_URL: FRONTEND,
     BOT_API_KEYS: hashBotKey(BOT_KEY),
+    // the default budgets are exercised by test/hardening; everywhere else they must not get in the way
+    RATE_LIMIT_AUTH_PER_MIN: '1000000',
+    RATE_LIMIT_ANON_PER_MIN: '1000000',
+    BOT_KEY_FAILS_PER_MIN: '1000000',
     ...extra,
   });
 }

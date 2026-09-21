@@ -7,6 +7,7 @@ export default async function healthRoutes(app: FastifyInstance) {
   app.withTypeProvider<ZodTypeProvider>().get(
     '/healthz',
     {
+      config: { rateLimit: false }, // load balancers poll this
       schema: {
         tags: ['system'],
         response: { 200: z.object({ status: z.literal('ok'), db: z.literal('ok'), serverTime: z.string() }) },

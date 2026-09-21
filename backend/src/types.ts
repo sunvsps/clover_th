@@ -18,6 +18,8 @@ declare module 'fastify' {
     prisma: PrismaClient;
     tx: TxRunner;
     env: Env;
+    /** wrong-bot-key counters per IP, see plugins/botAuth.ts */
+    botFailures: Map<string, { count: number; resetAt: number }>;
   }
   interface FastifyRequest {
     auth: AuthContext | null;

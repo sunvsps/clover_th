@@ -17,7 +17,11 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "openapi": "tsx scripts/generate-openapi.ts",
-    "ci": "bash scripts/ci.sh"
+    "ci": "bash scripts/ci.sh",
+    "test:load": "vitest run -c vitest.load.config.ts",
+    "dev-login": "tsx scripts/dev-login.ts",
+    "grant-admin": "tsx scripts/grant-admin.ts",
+    "hash-bot-key": "tsx scripts/hash-bot-key.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
