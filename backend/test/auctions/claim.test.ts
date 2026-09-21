@@ -116,7 +116,8 @@ describe('WP8 claim and release (AC-3)', () => {
     expect((await A.release(a.h, r.id, r.itemIds[0]!)).json().error.code).toBe('ROUND_CLOSED');
     const draft = (await A.create(admin.h, { type: 'LIVE_CLAIM', name: 'd', items: items(1) })).json();
     const draftItem = (await w.db.prisma.auctionItem.findFirstOrThrow({ where: { roundId: draft.id } })).id;
-    expect((await A.claim(a.h, draft.id, draftItem)).json().error.code).toBe('ROUND_NOT_OPEN');
+    // a draft is invisible to members, so writes do not reveal it either (security review L-5)
+    expect((await A.claim(a.h, draft.id, draftItem)).statusCode).toBe(404);
     await A.cancel(admin.h, r.id);
     expect((await A.claim(a.h, r.id, r.itemIds[0]!)).json().error.code).toBe('ROUND_CLOSED');
     expect(await w.db.prisma.auctionItem.count({ where: { winnerId: { not: null } } })).toBe(0);

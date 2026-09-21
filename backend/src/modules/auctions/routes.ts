@@ -31,9 +31,10 @@ import {
 } from './rounds.js';
 
 const category = z.enum(['PET', 'MATERIAL', 'GEMBOX', 'GEAR', 'CARD', 'RELIC']);
-const imageUrl = safeString(2000).refine((u) => /^https?:\/\//i.test(u) && URL.canParse(u), {
-  message: 'must be an http(s) URL',
-});
+const imageUrl = safeString(2000).refine(
+  (u) => /^https:\/\//i.test(u) && URL.canParse(u) && !new URL(u).username && !new URL(u).password,
+  { message: 'must be an https URL without credentials' },
+);
 const itemIn = z
   .object({
     name: nameField(100),
@@ -80,10 +81,22 @@ export default async function auctionRoutes(app: FastifyInstance) {
 
   /** Lazy finalize: a window that ended but was not swept yet is closed before we answer. */
   async function lazyFinalize(id?: number) {
-    const ids = id
-      ? (await expiredOpenRounds(app.prisma)).filter((x) => x === id)
-      : await expiredOpenRounds(app.prisma);
-    for (const x of ids) await app.tx((t) => finalizeRound(t, x));
+    // Best effort only (the sweeper owns finalization): a failing allocation must never turn every member's poll into a
+    // 500. finalizeRound is one transaction, so a failure leaves no partial state and the round stays OPEN for a retry.
+    try {
+      const ids = id
+        ? (await expiredOpenRounds(app.prisma)).filter((x) => x === id)
+        : await expiredOpenRounds(app.prisma);
+      for (const x of ids) {
+        try {
+          await app.tx((t) => finalizeRound(t, x));
+        } catch (err) {
+          app.log.error({ err, roundId: x }, 'lazy finalize failed; serving the read anyway');
+        }
+      }
+    } catch (err) {
+      app.log.error({ err }, 'lazy finalize lookup failed; serving the read anyway');
+    }
   }
 
   const visible = (round: RoundRow | null, admin: boolean): RoundRow => {

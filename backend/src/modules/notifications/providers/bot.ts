@@ -69,6 +69,7 @@ export class BotProvider implements NotificationProvider {
           'idempotency-key': msg.idempotencyKey,
         },
         body,
+        redirect: 'error', // a redirected POST would carry the HMAC headers elsewhere
         signal: AbortSignal.timeout(this.cfg.timeoutMs ?? 5000),
       });
       const json = (await res.json().catch(() => null)) as { code?: unknown } | null;

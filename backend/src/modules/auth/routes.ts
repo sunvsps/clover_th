@@ -2,7 +2,8 @@ import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { errors } from '../../lib/errors.js';
+import { record } from '../../lib/audit.js';
+import { AppError, errors } from '../../lib/errors.js';
 import { safeString } from '../../lib/text.js';
 import { endSession, startSession } from '../../plugins/session.js';
 import { requireAuth } from '../../plugins/requireAdmin.js';
@@ -83,12 +84,23 @@ export default async function authRoutes(app: FastifyInstance) {
       const unsigned = raw ? req.unsignCookie(raw) : null;
       const [nonce, issuedAt] = unsigned?.valid && unsigned.value ? unsigned.value.split('.') : [];
       const fresh = issuedAt !== undefined && Date.now() - Number(issuedAt) < STATE_TTL_MS;
+      // A browser navigating here (Accept: text/html) must land back in the app, not on a raw JSON page (review M-6).
+      const wantsHtml = (req.headers.accept ?? '').includes('text/html');
       if (!nonce || !state || !fresh || !safeEq(nonce, state) || !consumeNonce(nonce)) {
+        if (wantsHtml) return reply.redirect(frontend({ authError: 'AUTH_STATE_INVALID' }), 302);
         throw errors.oauthFailed('Missing, invalid or reused OAuth state');
       }
       if (error || !code) return reply.redirect(frontend({ authError: 'AUTH_OAUTH_FAILED' }), 302);
 
-      const discordId = await fetchDiscordUserId(env, await exchangeCode(env, code));
+      let discordId: string;
+      try {
+        discordId = await fetchDiscordUserId(env, await exchangeCode(env, code));
+      } catch (err) {
+        if (wantsHtml && err instanceof AppError && err.code === 'AUTH_OAUTH_FAILED') {
+          return reply.redirect(frontend({ authError: 'AUTH_OAUTH_FAILED' }), 302);
+        }
+        throw err;
+      }
       const member = await app.prisma.member.findUnique({
         where: { discordId },
         select: { id: true, isActive: true },
@@ -96,7 +108,17 @@ export default async function authRoutes(app: FastifyInstance) {
       if (!member) return reply.redirect(frontend({ authError: 'AUTH_NOT_REGISTERED' }), 302);
       if (!member.isActive) return reply.redirect(frontend({ authError: 'AUTH_MEMBER_INACTIVE' }), 302);
 
-      await app.tx((tx) => startSession(tx, env, reply, member.id));
+      await app.tx(async (tx) => {
+        await startSession(tx, env, reply, member.id);
+        await record(tx, {
+          actorType: 'MEMBER',
+          actorId: member.id,
+          action: 'auth.login',
+          entityType: 'member',
+          entityId: member.id,
+          requestId: req.id,
+        }); // no token, ever
+      });
       return reply.redirect(frontend(), 302);
     },
   );
@@ -106,6 +128,16 @@ export default async function authRoutes(app: FastifyInstance) {
     { schema: { tags: ['auth'] }, onRequest: [requireAuth] },
     async (req, reply) => {
       await endSession(req, reply);
+      await app.prisma.auditLog.create({
+        data: {
+          actorType: 'MEMBER',
+          actorId: req.auth!.memberId,
+          action: 'auth.logout',
+          entityType: 'member',
+          entityId: req.auth!.memberId,
+          requestId: req.id,
+        },
+      });
       return reply.status(204).send();
     },
   );

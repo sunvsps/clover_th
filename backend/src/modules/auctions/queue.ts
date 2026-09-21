@@ -43,6 +43,11 @@ export async function readQueues(db: Db, memberId: string): Promise<QueueView[]>
 /** Join (idempotent): an existing entry keeps its place. A rejoin after leaving is a new entry at the tail. */
 export async function joinQueue(tx: Tx, category: QueueCategory, memberId: string, requestId?: string) {
   await categoryLocks(tx, [category]);
+  // A deactivation that committed after the session lookup must not leave a ghost entry behind (review M-3).
+  const [m] = await tx.$queryRaw<
+    { isActive: boolean }[]
+  >`SELECT "isActive" FROM "Member" WHERE id = ${memberId}::uuid`;
+  if (!m?.isActive) throw new AppError('MEMBER_INACTIVE', 422, 'Member is deactivated');
   const inserted = await tx.$queryRaw<{ id: number }[]>`
     INSERT INTO "QueueEntry" (category, "memberId") VALUES (${category}::"ItemCategory", ${memberId}::uuid)
     ON CONFLICT (category, "memberId") DO NOTHING RETURNING id`;

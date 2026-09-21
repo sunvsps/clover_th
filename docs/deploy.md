@@ -20,21 +20,25 @@ The server reads the process environment only (it does not load `.env` by itself
 | `LOG_LEVEL` | no (info) | pino level. Logs never contain the bot key, cookies, the OAuth `code`/`state` or request bodies |
 | `DATABASE_URL` | yes | must contain `connection_limit` and `pool_timeout`, for example `postgresql://user:pass@host:5432/clover?connection_limit=25&pool_timeout=10`. Keep `connection_limit` well below Postgres `max_connections` |
 | `PRISMA_TX_MAX_WAIT_MS`, `PRISMA_TX_TIMEOUT_MS` | no (10000, 5000) | interactive transaction wait/timeout. A pool that is exhausted answers 503 `SERVICE_BUSY` |
-| `SESSION_SECRET` | yes | 32+ random characters, signs the OAuth state cookie. Generate: `openssl rand -base64 48` |
+| `SESSION_SECRET` | yes | signs the OAuth state cookie. Generate: `openssl rand -base64 48`. `.env.example` ships it empty on purpose. **In production the server refuses to start** with a placeholder (for example `change-me...`), fewer than 43 characters, or very low entropy |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | yes | Discord OAuth (section 4) |
 | `DISCORD_API_BASE` | no | only for tests against a mock Discord |
 | `FRONTEND_URL` | yes | the public origin. Post-login redirect target and the allowed `Origin` for cookie writes |
 | `BOT_API_KEYS` | yes | one or two sha256 hex digests of inbound bot keys (section 5) |
 | `NOTIFICATIONS_PROVIDER` | no (off) | `off`, `fake` (dev), `bot` (section 9) |
 | `DISCORD_BOT_NOTIFY_URL`, `DISCORD_BOT_NOTIFY_SECRET` | if provider is `bot` | where and how the API pushes promotion messages |
-| `TRUST_PROXY` | no (false) | **set `true` behind a reverse proxy** (section 7) |
+| `TRUST_PROXY_HOPS` | no (0) | **number of trusted reverse proxies in front of the API, usually `1`** (section 7). `0` ignores `X-Forwarded-For` |
+| `TRUST_PROXY_CIDRS` | no | comma-separated proxy addresses/CIDRs to trust instead of a hop count. The old `TRUST_PROXY=true` is refused at startup |
+| `PREAUTH_LIMIT_PER_MIN` | no (6000) | cheap per-IP budget applied before the session database lookup (anonymous flood guard); `/healthz` is exempt |
+| `SESSION_SLIDING_DAYS` | no (30) | session lifetime, refreshed at most hourly while used |
+| `SESSION_ABSOLUTE_DAYS` | no (90) | hard cap from login: a session never lives longer, however often it is used. Expired and over-age sessions are purged daily by the in-process sweeper |
 | `DOCS_ACCESS` | no (auto) | who may read `/docs/json` (section 8) |
 | `RATE_LIMIT_AUTH_PER_MIN` | no (600) | default budget per signed-in member |
 | `RATE_LIMIT_ANON_PER_MIN` | no (120) | default budget per IP for public routes |
 | `CLAIM_RATE_MAX` | no (5) | claim/release requests per member per second |
 | `BOT_KEY_FAILS_PER_MIN` | no (20) | wrong bot keys per IP per minute before 429 |
 
-Rate limits, in one place (all answer `429 RATE_LIMITED` with `Retry-After`): every route has the default budget per member (or per IP when anonymous); `/healthz` is exempt; `/auth/discord/login` and `/auth/discord/callback` are 30 per minute per IP; claim/release is `CLAIM_RATE_MAX` per second per member; failed bot keys are counted per IP.
+Rate limits, in one place (all answer `429 RATE_LIMITED` with `Retry-After`): every route has the default budget per member (or per IP when anonymous); `/healthz` is exempt; `/auth/discord/login` and `/auth/discord/callback` are 30 per minute per IP; claim/release is `CLAIM_RATE_MAX` per second per member; invalid bot keys are counted per IP (a valid key always passes, so nobody can lock the bot out); a cheap per-IP budget (`PREAUTH_LIMIT_PER_MIN`) runs before the session lookup.
 
 ## 3. First deployment, step by step
 
@@ -84,13 +88,21 @@ Put the digest in `BOT_API_KEYS`. The bot sends it as header `X-Bot-Key`. **Rota
 ## 6. Reverse proxy
 
 - Terminate TLS at the proxy and forward `/api/` and `/healthz` to `127.0.0.1:3000`; serve the built frontend for everything else, on the same host.
-- Set `X-Forwarded-For` and set `TRUST_PROXY=true` (section 7).
+- Set `X-Forwarded-For` from the connection and set `TRUST_PROXY_HOPS=1` (section 7).
 - Do not cache `/api/` responses (the API sends `Cache-Control: no-store`; the polling endpoint uses `no-cache` plus an ETag).
 - Request body limit: the API rejects bodies over Fastify's 1 MB default.
 
-## 7. TRUST_PROXY
+## 7. Trusted proxies (TRUST_PROXY_HOPS)
 
-Default `false`: the client IP is the socket peer. Behind a reverse proxy every user then appears to come from the proxy's IP, so per-IP limits (login 30 per minute, anonymous budget, failed bot keys) become **global** and the 31st login in a minute anywhere gets 429. Set `TRUST_PROXY=true` only when the API is reachable exclusively through your trusted proxy; otherwise clients could forge `X-Forwarded-For`.
+Default `0`: the client IP is the socket peer and `X-Forwarded-For` is ignored. Behind a reverse proxy every user then appears to come from the proxy's IP, so per-IP limits (login 30 per minute, anonymous budget, invalid bot keys) become **global** and the 31st login in a minute anywhere gets 429.
+
+Set `TRUST_PROXY_HOPS=1` for one proxy in front of the API (or `TRUST_PROXY_CIDRS` with the proxies' addresses). The client is then the address the proxy appended, counted from the right of `X-Forwarded-For`, so a client cannot choose its own identity by sending its own header. **Your proxy must set the header from the connection, not append to a client-supplied one**, and the API must be reachable only through it:
+
+```nginx
+proxy_set_header X-Forwarded-For $remote_addr;
+```
+
+(`$proxy_add_x_forwarded_for` keeps the client's own value on the left; with one hop that is harmless, but two proxies need `TRUST_PROXY_HOPS=2`.) The former `TRUST_PROXY=true` trusted the whole chain and is refused at startup.
 
 ## 8. OpenAPI document exposure
 

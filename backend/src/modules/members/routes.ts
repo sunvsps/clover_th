@@ -108,6 +108,8 @@ export default async function memberRoutes(app: FastifyInstance) {
     },
     async (req) =>
       app.tx(async (tx) => {
+        // Serialize concurrent admin edits so the audit diff always matches the final row (review L-9).
+        await tx.$queryRaw`SELECT id FROM "Member" WHERE id = ${req.params.id}::uuid FOR UPDATE`;
         const before = await tx.member.findUnique({ where: { id: req.params.id } });
         if (!before) throw errors.memberNotFound();
         const { ign, nickname, jobId } = req.body;

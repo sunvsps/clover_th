@@ -155,6 +155,15 @@ export async function seed(prisma: PrismaClient, opts: { dev?: boolean } = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (process.env.SEED_DEV_MEMBERS === '1' || process.argv.includes('--dev'))
+  ) {
+    console.error(
+      'refused: the dev members include an admin with a fixed Discord id and must never be seeded in production.',
+    );
+    process.exit(1);
+  }
   const prisma = new PrismaClient();
   seed(prisma, { dev: process.env.SEED_DEV_MEMBERS === '1' || process.argv.includes('--dev') })
     .then(() => console.log('seed complete'))

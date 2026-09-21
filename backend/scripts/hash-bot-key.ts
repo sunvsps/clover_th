@@ -17,5 +17,11 @@ if (process.argv.includes('--generate')) {
     console.error('No key on stdin. Use --generate to create one.');
     process.exit(1);
   }
+  if (key.length < 32) {
+    console.error(
+      'refused: a bot key shorter than 32 characters is guessable and its digest could be cracked offline. Use --generate.',
+    );
+    process.exit(1);
+  }
   console.log(hashBotKey(key));
 }

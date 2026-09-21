@@ -35,7 +35,9 @@ const w = (app: unknown) =>
 describe('WARDEN probes', () => {
   it('P1: TRUST_PROXY=true lets a client pick its own rate-limit / bot-guard identity via X-Forwarded-For', async () => {
     const app = await createTestApp(db, {
-      env: { TRUST_PROXY: 'true', RATE_LIMIT_ANON_PER_MIN: '5', BOT_KEY_FAILS_PER_MIN: '3' },
+      // TRUST_PROXY=true is no longer accepted (H-2 fix); the equivalent safe setting is one trusted hop, under which the
+      // forged leftmost entries below must no longer help the attacker.
+      env: { TRUST_PROXY_HOPS: '1', RATE_LIMIT_ANON_PER_MIN: '5', BOT_KEY_FAILS_PER_MIN: '3' },
     });
     await app.ready();
     // the proxy APPENDS the real client ip (nginx $proxy_add_x_forwarded_for); the attacker pre-seeds the header
@@ -278,7 +280,9 @@ describe('WARDEN probes', () => {
   });
 
   it('P9: production docs and error/headers', async () => {
-    const app = await createTestApp(db, { env: { NODE_ENV: 'production' } });
+    const app = await createTestApp(db, {
+      env: { NODE_ENV: 'production', SESSION_SECRET: 'Zk3vQ8mWn1Rt6YpLc0XbJd7HsGf2AeUo9iVxNq4TwK5yBz' }, // M-4: production needs a real secret
+    });
     await app.ready();
     console.log('P9 prod /docs/json', (await app.inject('/docs/json')).statusCode);
     const r = await app.inject({

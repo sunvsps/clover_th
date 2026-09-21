@@ -28,6 +28,7 @@ import registrationRoutes from './modules/registrations/routes.js';
 import csrf from './plugins/csrf.js';
 import errorHandler from './plugins/errorHandler.js';
 import { genReqId, default as requestId } from './plugins/requestId.js';
+import preauth from './plugins/preauth.js';
 import { requireAdmin } from './plugins/requireAdmin.js';
 import session from './plugins/session.js';
 import './types.js';
@@ -48,7 +49,15 @@ export async function buildApp(opts: BuildOptions) {
   const { env } = opts;
   const app = Fastify({
     genReqId,
-    trustProxy: env.TRUST_PROXY,
+    // Default: X-Forwarded-For is ignored. Otherwise trust only the configured proxies, counted from the right.
+    // Default: X-Forwarded-For is ignored. Otherwise trust only the configured proxies, counted from the RIGHT of the
+    // chain (a hop count as a function: Fastify's own numeric form does not resolve the client address correctly).
+    trustProxy:
+      env.TRUST_PROXY_CIDRS.length > 0
+        ? env.TRUST_PROXY_CIDRS
+        : env.TRUST_PROXY_HOPS > 0
+          ? (_addr: string, hop: number) => hop < env.TRUST_PROXY_HOPS
+          : false,
     logger: {
       level: env.LOG_LEVEL,
       ...(opts.logStream ? { stream: opts.logStream } : {}),
@@ -103,6 +112,7 @@ export async function buildApp(opts: BuildOptions) {
     openapi: { info: { title: 'Clover_TH API', version: '0.1.0' } },
     transform: jsonSchemaTransform,
   });
+  await app.register(preauth); // before anything that touches the database
   await app.register(csrf);
   await app.register(session);
 

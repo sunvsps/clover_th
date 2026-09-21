@@ -47,15 +47,69 @@ const schema = z
      * public | admin (signed-in admin only) | off.
      */
     DOCS_ACCESS: z.enum(['auto', 'public', 'admin', 'off']).default('auto'),
-    TRUST_PROXY: z
-      .enum(['true', 'false'])
-      .default('false')
-      .transform((v) => v === 'true'),
+    /**
+     * Number of trusted reverse proxies in front of the API (0 = none, the default: X-Forwarded-For is ignored).
+     * With N the client IP is the N-th address from the RIGHT of the chain, so a client cannot forge it by sending
+     * its own X-Forwarded-For. Use TRUST_PROXY_CIDRS instead when the proxies have fixed addresses.
+     */
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+    /** Comma-separated proxy addresses or CIDRs to trust (overrides TRUST_PROXY_HOPS when set). */
+    TRUST_PROXY_CIDRS: z
+      .string()
+      .default('')
+      .transform((s) =>
+        s
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean),
+      )
+      .refine(
+        (a) => a.every((c) => /^[0-9a-fA-F:.]+(\/\d{1,3})?$/.test(c)),
+        'each entry must be an IP or CIDR',
+      ),
+    /** REMOVED: the old boolean trusted the whole X-Forwarded-For chain. Startup fails if it is set to true. */
+    TRUST_PROXY: z.string().optional(),
+    /** Cheap per-IP request budget applied BEFORE the session lookup (protects the database from anonymous floods). */
+    PREAUTH_LIMIT_PER_MIN: z.coerce.number().int().min(1).max(10_000_000).default(6000),
+    /** Sliding session lifetime: refreshed at most hourly while the member is active. */
+    SESSION_SLIDING_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    /** Hard cap from login: a session never lives longer, however often it is used. */
+    SESSION_ABSOLUTE_DAYS: z.coerce.number().int().min(1).max(730).default(90),
     NOTIFICATIONS_PROVIDER: z.enum(['bot', 'fake', 'off']).default('off'),
     DISCORD_BOT_NOTIFY_URL: z.string().url().optional(),
     DISCORD_BOT_NOTIFY_SECRET: z.string().min(1).optional(),
   })
   .superRefine((v, ctx) => {
+    if (v.TRUST_PROXY !== undefined && /^(true|1|yes)$/i.test(v.TRUST_PROXY)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TRUST_PROXY'],
+        message:
+          'TRUST_PROXY=true trusted the whole X-Forwarded-For chain and is no longer supported: set TRUST_PROXY_HOPS (number of trusted proxies, usually 1) or TRUST_PROXY_CIDRS',
+      });
+    }
+    if (v.SESSION_ABSOLUTE_DAYS < v.SESSION_SLIDING_DAYS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SESSION_ABSOLUTE_DAYS'],
+        message: 'must be >= SESSION_SLIDING_DAYS',
+      });
+    }
+    if (v.NODE_ENV === 'production') {
+      const secret = v.SESSION_SECRET;
+      if (
+        secret.length < 43 ||
+        new Set(secret).size < 16 ||
+        /change[-_ ]?me|placeholder|example|secret-?key/i.test(secret)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['SESSION_SECRET'],
+          message:
+            'in production it must be a real random secret (>= 43 characters, not a placeholder). Generate one: openssl rand -base64 48',
+        });
+      }
+    }
     if (v.NOTIFICATIONS_PROVIDER === 'bot') {
       for (const k of ['DISCORD_BOT_NOTIFY_URL', 'DISCORD_BOT_NOTIFY_SECRET'] as const) {
         if (!v[k])

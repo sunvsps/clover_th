@@ -134,10 +134,15 @@ export async function roundFingerprint(db: Db, roundId: number, memberId: string
       won: number;
       last: Date | null;
       mine: number;
+      config: string;
+      content: string;
     }[]
   >`
     SELECT r.status, r."opensAt", r."closesAt", count(i.id)::int AS items, count(i."winnerId")::int AS won,
-           max(i."wonAt") AS last, (count(*) FILTER (WHERE i."winnerId" = ${memberId}::uuid))::int AS mine
+           max(i."wonAt") AS last, (count(*) FILTER (WHERE i."winnerId" = ${memberId}::uuid))::int AS mine,
+           -- everything an admin can edit on a draft: name, cap, timing, and every item's id/name/category/rarity/image
+           concat_ws('|', r.name, r."winCap", r."durationSec", r."startDelaySec") AS config,
+           md5(COALESCE(string_agg(concat_ws('|', i.id, i.name, i.category, i.rarity, i."imageUrl"), ',' ORDER BY i.id), '')) AS content
     FROM "AuctionRound" r LEFT JOIN "AuctionItem" i ON i."roundId" = r.id
     WHERE r.id = ${roundId} GROUP BY r.id`;
   const x = rows[0];
@@ -152,6 +157,8 @@ export async function roundFingerprint(db: Db, roundId: number, memberId: string
     x.won,
     x.last?.getTime(),
     x.mine,
+    x.config,
+    x.content,
   ].join('|');
   return `"${createHash('sha1').update(raw).digest('base64url')}"`;
 }
@@ -304,7 +311,8 @@ export async function openWindow(
       `This is not a ${type === 'LIVE_CLAIM' ? 'live-claim' : 'queue'} round`,
     );
   }
-  if (g!.status === 'DRAFT') throw new AppError('ROUND_NOT_OPEN', 409, 'The round has not started');
+  // A draft is invisible to members (404 on reads), so the write paths must not reveal it either (review L-5).
+  if (g!.status === 'DRAFT') throw new AppError('NOT_FOUND', 404, 'Round not found');
   if (g!.status !== 'OPEN' || g!.late) throw new AppError('ROUND_CLOSED', 409, 'The round is closed');
   if (g!.early) throw new AppError('ROUND_NOT_OPEN', 409, 'The round has not opened yet');
   return { winCap: g!.winCap };

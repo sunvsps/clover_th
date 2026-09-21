@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal', 'db']);
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal']);
 
 export class DevLoginRefused extends Error {}
 
@@ -13,6 +13,11 @@ export class DevLoginRefused extends Error {}
 export function assertDevLoginAllowed(env: Record<string, string | undefined>) {
   if (env.NODE_ENV === 'production') {
     throw new DevLoginRefused('dev-login refuses to run when NODE_ENV=production.');
+  }
+  if (env.FRONTEND_URL && /^https:/i.test(env.FRONTEND_URL) && env.DEV_LOGIN_ALLOW_REMOTE_DB !== '1') {
+    throw new DevLoginRefused(
+      'FRONTEND_URL is https, which looks like a deployed environment; dev-login is for local development.',
+    );
   }
   const url = env.DATABASE_URL;
   if (!url) throw new DevLoginRefused('DATABASE_URL is not set.');

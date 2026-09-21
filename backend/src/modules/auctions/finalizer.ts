@@ -55,8 +55,8 @@ export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string)
   const queues: QueueSnapshot = {};
   for (const category of [...categories].sort()) {
     const rows = await tx.$queryRaw<{ memberId: string; id: number }[]>`
-      SELECT "memberId", id FROM "QueueEntry"
-      WHERE category = ${category}::"ItemCategory" AND id <= ${cutoff.get(category) ?? 0}::int ORDER BY id`;
+      SELECT q."memberId", q.id FROM "QueueEntry" q JOIN "Member" m ON m.id = q."memberId" AND m."isActive"
+      WHERE q.category = ${category}::"ItemCategory" AND q.id <= ${cutoff.get(category) ?? 0}::int ORDER BY q.id`;
     queues[category] = rows.map((r) => r.memberId);
     for (const [i, r] of rows.entries()) {
       await tx.$executeRaw`

@@ -16,7 +16,12 @@ async function main() {
     throw err;
   }
   const app = await buildApp({ env });
-  const sweeper = createSweeper({ prisma: app.prisma, tx: app.tx, log: app.log });
+  const sweeper = createSweeper({
+    prisma: app.prisma,
+    tx: app.tx,
+    log: app.log,
+    sessionAbsoluteDays: env.SESSION_ABSOLUTE_DAYS,
+  });
   sweeper.start();
   app.addHook('onClose', () => sweeper.stop());
   const provider = createProvider(env);

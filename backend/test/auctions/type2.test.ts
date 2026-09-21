@@ -175,7 +175,8 @@ describe('WP9 preferences', () => {
     expect((await Q.setPrefs(a!.h, r.id, [r.itemIds[0]!])).json().error.code).toBe('ROUND_CLOSED');
     const d = (await A.create(admin.h, { type: 'QUEUE_RANKED', name: 'd', items: gear(1) })).json();
     const di = (await w.db.prisma.auctionItem.findFirstOrThrow({ where: { roundId: d.id } })).id;
-    expect((await Q.setPrefs(a!.h, d.id, [di])).json().error.code).toBe('ROUND_NOT_OPEN');
+    // a draft is invisible to members, so writes do not reveal it either (security review L-5)
+    expect((await Q.setPrefs(a!.h, d.id, [di])).statusCode).toBe(404);
   });
 
   it('a preference edit after close gives ROUND_CLOSED and the stored list stays as it was', async () => {

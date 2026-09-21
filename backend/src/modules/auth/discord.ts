@@ -27,6 +27,7 @@ export async function exchangeCode(env: Env, code: string): Promise<string> {
 export async function fetchDiscordUserId(env: Env, accessToken: string): Promise<string> {
   const res = await fetch(`${env.DISCORD_API_BASE}/api/users/@me`, {
     headers: { authorization: `Bearer ${accessToken}` },
+    redirect: 'error',
     signal: AbortSignal.timeout(TIMEOUT_MS),
   }).catch(() => null);
   if (!res || !res.ok) throw errors.oauthFailed();

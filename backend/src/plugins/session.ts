@@ -6,7 +6,6 @@ import type { Tx } from '../lib/tx.js';
 import type { AuthContext } from '../types.js';
 
 export const BOT_PREFIX = '/api/v1/bot/';
-const SESSION_DAYS = 30;
 
 export const sessionCookieName = (env: Env) => (env.NODE_ENV === 'production' ? '__Host-session' : 'session');
 export const isBotPath = (url: string) => url.split('?')[0]!.startsWith(BOT_PREFIX);
@@ -34,13 +33,14 @@ type Row = {
 export async function startSession(tx: Tx, env: Env, reply: FastifyReply, memberId: string) {
   const token = randomBytes(32).toString('base64url');
   await tx.$executeRaw`INSERT INTO "Session" (id, "memberId", "expiresAt")
-    VALUES (${hashToken(token)}, ${memberId}::uuid, clock_timestamp() + make_interval(days => ${SESSION_DAYS}::int))`;
+    VALUES (${hashToken(token)}, ${memberId}::uuid,
+            clock_timestamp() + make_interval(days => ${env.SESSION_SLIDING_DAYS}::int))`;
   reply.setCookie(sessionCookieName(env), token, {
     httpOnly: true,
     secure: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: SESSION_DAYS * 86400,
+    maxAge: env.SESSION_SLIDING_DAYS * 86400,
   });
 }
 
@@ -63,14 +63,23 @@ export default fp(
   async (app) => {
     app.decorateRequest('auth', null);
     const cookieName = sessionCookieName(app.env);
+    const sliding = app.env.SESSION_SLIDING_DAYS;
+    const absolute = app.env.SESSION_ABSOLUTE_DAYS;
+    // Tokens that matched no session row. A random token that does not exist cannot become valid later, so repeating
+    // the same garbage cookie costs no further database queries. (Expired/inactive states are NOT cached: they can
+    // change, e.g. on reactivation.)
+    const unknownTokens = new Map<string, number>();
 
     app.addHook('onRequest', async (request) => {
       if (isBotPath(request.url)) return;
       const token = request.cookies[cookieName];
       if (!token || token.length > 200) return;
       const id = hashToken(token);
+      const until = unknownTokens.get(id);
+      if (until !== undefined && until > Date.now()) return;
       const rows = await app.prisma.$queryRaw<Row[]>`
-      SELECT s."expiresAt" > clock_timestamp() AS valid,
+      SELECT s."expiresAt" > clock_timestamp()
+               AND s."createdAt" + make_interval(days => ${absolute}::int) > clock_timestamp() AS valid,
              clock_timestamp() - s."lastSeen" > interval '1 hour' AS stale,
              m."isActive", m.id AS "memberId", m."discordId", m.ign, m.nickname, m."isAdmin", m.source,
              j.id AS "jobId", j.label, j.color
@@ -79,10 +88,17 @@ export default fp(
       JOIN "Job" j ON j.id = m."jobId"
       WHERE s.id = ${id}`;
       const r = rows[0];
-      if (!r || !r.valid || !r.isActive) return;
+      if (!r) {
+        if (unknownTokens.size > 5000) unknownTokens.clear();
+        unknownTokens.set(id, Date.now() + 30_000);
+        return;
+      }
+      if (!r.valid || !r.isActive) return;
       if (r.stale) {
         await app.prisma.$executeRaw`UPDATE "Session"
-        SET "lastSeen" = clock_timestamp(), "expiresAt" = clock_timestamp() + make_interval(days => ${SESSION_DAYS}::int)
+        SET "lastSeen" = clock_timestamp(),
+            "expiresAt" = LEAST(clock_timestamp() + make_interval(days => ${sliding}::int),
+                                "createdAt" + make_interval(days => ${absolute}::int))
         WHERE id = ${id}`;
       }
       const auth: AuthContext = {

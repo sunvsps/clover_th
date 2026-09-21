@@ -5,6 +5,7 @@ import { createTestDb, type TestDb } from '../helpers/db.js';
 import { session } from '../auctions/helpers.js';
 
 // Rate limits, security headers and docs exposure with the settings a deployment would use.
+const PROD_SECRET = 'Zk3vQ8mWn1Rt6YpLc0XbJd7HsGf2AeUo9iVxNq4TwK5yBz'; // production needs a real random secret (review M-4)
 let db: TestDb;
 beforeAll(async () => {
   db = await createTestDb();
@@ -55,7 +56,7 @@ describe('default rate limits (design 9)', () => {
     await app.close();
   });
 
-  it('a wrong bot key is counted per IP: after the limit even the right key gets 429 until the window ends', async () => {
+  it('wrong bot keys are throttled per IP (401 then 429) but the RIGHT key always passes: nobody can lock the real bot out (review H-1)', async () => {
     const app = await createTestApp(db, { env: { BOT_KEY_FAILS_PER_MIN: '5' } });
     await app.ready();
     const put = (key: string) =>
@@ -66,10 +67,15 @@ describe('default rate limits (design 9)', () => {
         payload: { ign: 'BotRate', job: 'Knight' },
       });
     for (let i = 0; i < 5; i++) expect((await put('wrong')).json().error.code).toBe('BOT_KEY_INVALID');
-    const blocked = await put(BOT_KEY);
+    // over the limit: further wrong keys are throttled (429) ...
+    const blocked = await put('wrong');
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json().error.code).toBe('RATE_LIMITED');
     expect(await db.prisma.member.count({ where: { discordId: '8800001' } })).toBe(0);
+    // ... but the real bot is NOT locked out from the same address
+    const real = await put(BOT_KEY);
+    expect(real.statusCode).toBe(201);
+    expect((await put(BOT_KEY)).statusCode).toBe(200);
     await app.close();
     // a correct key never counts as a failure
     const ok = await createTestApp(db, { env: { BOT_KEY_FAILS_PER_MIN: '2' } });
@@ -136,14 +142,16 @@ describe('/docs/json exposure (DOCS_ACCESS)', () => {
 
   it('auto: public outside production, OFF (404) in production', async () => {
     expect((await get({})).statusCode).toBe(200);
-    const prod = await get({ NODE_ENV: 'production' });
+    const prod = await get({ NODE_ENV: 'production', SESSION_SECRET: PROD_SECRET });
     expect(prod.statusCode).toBe(404);
     expect(prod.json().error.code).toBe('NOT_FOUND');
   });
 
   it('off and public are honoured in any environment', async () => {
     expect((await get({ DOCS_ACCESS: 'off' })).statusCode).toBe(404);
-    expect((await get({ NODE_ENV: 'production', DOCS_ACCESS: 'public' })).statusCode).toBe(200);
+    expect(
+      (await get({ NODE_ENV: 'production', SESSION_SECRET: PROD_SECRET, DOCS_ACCESS: 'public' })).statusCode,
+    ).toBe(200);
   });
 
   it('admin: needs an admin session (401 anonymous, 403 member, 200 admin)', async () => {

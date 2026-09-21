@@ -124,6 +124,7 @@ model Session {
   lastSeen  DateTime @default(now())
 
   @@index([memberId])
+  @@index([expiresAt])
 }
 
 // ---------- Schedule, registration, planner ----------
