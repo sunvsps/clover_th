@@ -61,7 +61,7 @@ describe('WP8 admin: create, edit, start, close, cancel', () => {
     const admin = await session(w, { admin: true });
     const bad = [
       { type: 'LIVE_CLAIM', name: 'x', items: [{ name: 'a', category: 'WEAPON' }] },
-      { type: 'QUEUE_RANKED', name: 'x', items: [] },
+      { type: 'BIDDING', name: 'x', items: [] },
       { type: 'LIVE_CLAIM', name: 'x', items: [], isAdmin: true },
       {
         type: 'LIVE_CLAIM',

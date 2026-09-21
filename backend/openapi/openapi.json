@@ -2653,7 +2653,8 @@
                   "type": {
                     "type": "string",
                     "enum": [
-                      "LIVE_CLAIM"
+                      "LIVE_CLAIM",
+                      "QUEUE_RANKED"
                     ]
                   },
                   "name": {
@@ -2667,7 +2668,6 @@
                     "maximum": 86400
                   },
                   "winCap": {
-                    "default": 5,
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 50
@@ -3453,11 +3453,16 @@
                               },
                               "wonAt": {
                                 "type": "string"
+                              },
+                              "queuePos": {
+                                "nullable": true,
+                                "type": "number"
                               }
                             },
                             "required": [
                               "memberId",
-                              "wonAt"
+                              "wonAt",
+                              "queuePos"
                             ],
                             "additionalProperties": false
                           }
@@ -3475,6 +3480,12 @@
                     },
                     "myWinCount": {
                       "type": "number"
+                    },
+                    "eligibleCategories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -3489,7 +3500,8 @@
                     "closesAt",
                     "serverTime",
                     "items",
-                    "myWinCount"
+                    "myWinCount",
+                    "eligibleCategories"
                   ],
                   "additionalProperties": false
                 }
@@ -3573,11 +3585,16 @@
                             },
                             "wonAt": {
                               "type": "string"
+                            },
+                            "queuePos": {
+                              "nullable": true,
+                              "type": "number"
                             }
                           },
                           "required": [
                             "memberId",
-                            "wonAt"
+                            "wonAt",
+                            "queuePos"
                           ],
                           "additionalProperties": false
                         }
@@ -3680,11 +3697,16 @@
                             },
                             "wonAt": {
                               "type": "string"
+                            },
+                            "queuePos": {
+                              "nullable": true,
+                              "type": "number"
                             }
                           },
                           "required": [
                             "memberId",
-                            "wonAt"
+                            "wonAt",
+                            "queuePos"
                           ],
                           "additionalProperties": false
                         }
@@ -3796,11 +3818,16 @@
                               },
                               "wonAt": {
                                 "type": "string"
+                              },
+                              "queuePos": {
+                                "nullable": true,
+                                "type": "number"
                               }
                             },
                             "required": [
                               "memberId",
-                              "wonAt"
+                              "wonAt",
+                              "queuePos"
                             ],
                             "additionalProperties": false
                           }
@@ -3917,11 +3944,16 @@
                               },
                               "wonAt": {
                                 "type": "string"
+                              },
+                              "queuePos": {
+                                "nullable": true,
+                                "type": "number"
                               }
                             },
                             "required": [
                               "memberId",
-                              "wonAt"
+                              "wonAt",
+                              "queuePos"
                             ],
                             "additionalProperties": false
                           }
@@ -3947,6 +3979,346 @@
                     "serverTime",
                     "items",
                     "myWinCount"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/queues": {
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "category": {
+                        "type": "string"
+                      },
+                      "length": {
+                        "type": "number"
+                      },
+                      "myRank": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "entries": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "rank": {
+                              "type": "number"
+                            },
+                            "memberId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "rank",
+                            "memberId"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "category",
+                      "length",
+                      "myRank",
+                      "entries"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/queues/{category}/me": {
+      "put": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "category",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "length": {
+                      "type": "number"
+                    },
+                    "myRank": {
+                      "nullable": true,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "length",
+                    "myRank"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "category",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "length": {
+                      "type": "number"
+                    },
+                    "myRank": {
+                      "nullable": true,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "length",
+                    "myRank"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/rounds/{id}/preferences/me": {
+      "put": {
+        "tags": [
+          "auctions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "itemIds": {
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "required": [
+                  "itemIds"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roundId": {
+                      "type": "number"
+                    },
+                    "itemIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "required": [
+                    "roundId",
+                    "itemIds"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roundId": {
+                      "type": "number"
+                    },
+                    "itemIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "required": [
+                    "roundId",
+                    "itemIds"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/auctions/rounds/{id}/preferences": {
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "roundId": {
+                      "type": "number"
+                    },
+                    "lists": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "memberId": {
+                            "type": "string"
+                          },
+                          "itemIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "required": [
+                          "memberId",
+                          "itemIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "roundId",
+                    "lists"
                   ],
                   "additionalProperties": false
                 }

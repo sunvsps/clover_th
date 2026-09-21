@@ -1,8 +1,8 @@
 import { record } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
-import { memberClaimLock, withRoundLock } from '../../lib/locks.js';
+import { memberClaimLock } from '../../lib/locks.js';
 import type { Tx } from '../../lib/tx.js';
-import { myWinCount, readItem, type ItemView } from './rounds.js';
+import { myWinCount, openWindow, readItem, type ItemView } from './rounds.js';
 
 /**
  * Type 1 live claim and release (design 7.1). Hot path: raw SQL inside one interactive transaction (tx() with
@@ -12,23 +12,6 @@ import { myWinCount, readItem, type ItemView } from './rounds.js';
  * claims; later claims then see CLOSED, so no claim can commit after a close returned. All time comparisons are
  * DB-side (clock_timestamp()) after any lock wait.
  */
-type Gate = { type: string; status: string; winCap: number | null; early: boolean; late: boolean };
-
-async function openWindow(tx: Tx, roundId: number): Promise<Gate> {
-  await withRoundLock(tx, roundId, 'SHARE');
-  const [g] = await tx.$queryRaw<Gate[]>`
-    SELECT type, status, "winCap",
-           ("opensAt" IS NOT NULL AND clock_timestamp() < "opensAt") AS early,
-           ("closesAt" IS NOT NULL AND clock_timestamp() > "closesAt") AS late
-    FROM "AuctionRound" WHERE id = ${roundId}`;
-  if (g!.type !== 'LIVE_CLAIM')
-    throw new AppError('ROUND_TYPE_MISMATCH', 409, 'This is not a live-claim round');
-  if (g!.status === 'DRAFT') throw new AppError('ROUND_NOT_OPEN', 409, 'The round has not started');
-  if (g!.status !== 'OPEN' || g!.late) throw new AppError('ROUND_CLOSED', 409, 'The round is closed');
-  if (g!.early) throw new AppError('ROUND_NOT_OPEN', 409, 'The round has not opened yet');
-  return g!;
-}
-
 export type ClaimResult = { item: ItemView; myWinCount: number };
 
 export async function claimItem(
@@ -36,7 +19,7 @@ export async function claimItem(
   a: { roundId: number; itemId: number; memberId: string; requestId?: string },
 ): Promise<ClaimResult> {
   const { roundId, itemId, memberId } = a;
-  const gate = await openWindow(tx, roundId);
+  const gate = await openWindow(tx, roundId, 'LIVE_CLAIM');
   await memberClaimLock(tx, roundId, memberId);
 
   const [cur] = await tx.$queryRaw<{ winnerId: string | null }[]>`
@@ -83,7 +66,7 @@ export async function releaseItem(
   a: { roundId: number; itemId: number; memberId: string; requestId?: string },
 ): Promise<ClaimResult> {
   const { roundId, itemId, memberId } = a;
-  await openWindow(tx, roundId);
+  await openWindow(tx, roundId, 'LIVE_CLAIM');
   const rows = await tx.$queryRaw<{ id: number }[]>`
     UPDATE "AuctionItem" SET "winnerId" = NULL, "wonAt" = NULL, "winSource" = NULL
     WHERE id = ${itemId} AND "roundId" = ${roundId} AND "winnerId" = ${memberId}::uuid

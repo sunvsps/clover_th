@@ -6,6 +6,13 @@ import { nameField, safeString } from '../../lib/text.js';
 import { requireAdmin, requireAuth } from '../../plugins/requireAdmin.js';
 import { claimItem, releaseItem } from './liveClaim.js';
 import {
+  eligibleCategories,
+  readAllPreferences,
+  readMyPreferences,
+  submitPreferences,
+} from './preferences.js';
+import { joinQueue, leaveQueue, parseCategory, readQueues } from './queue.js';
+import {
   cancelRound,
   closeRound,
   createRound,
@@ -47,7 +54,9 @@ const roundBase = z.object({
   opensAt: z.string().nullable(),
   closesAt: z.string().nullable(),
 });
-const winner = z.object({ memberId: z.string(), wonAt: z.string() }).nullable();
+const winner = z
+  .object({ memberId: z.string(), wonAt: z.string(), queuePos: z.number().nullable() })
+  .nullable();
 const itemOut = z.object({
   id: z.number(),
   name: z.string(),
@@ -91,14 +100,19 @@ export default async function auctionRoutes(app: FastifyInstance) {
   // ---------- admin ----------
   const createBody = z
     .object({
-      type: z.literal('LIVE_CLAIM'), // QUEUE_RANKED arrives with type 2 (WP9)
+      type: z.enum(['LIVE_CLAIM', 'QUEUE_RANKED']),
       name: nameField(100),
       durationSec: z.number().int().min(5).max(86400).default(300),
-      winCap: z.number().int().min(1).max(50).default(5),
+      /** live claim only (default 5); a queue round allocates one item per category, so it has no cap */
+      winCap: z.number().int().min(1).max(50).optional(),
       startDelaySec: z.number().int().min(0).max(60).default(3),
       items: z.array(itemIn).max(500).default([]),
     })
-    .strict();
+    .strict()
+    .refine((b) => b.type === 'LIVE_CLAIM' || b.winCap === undefined, {
+      message: 'winCap applies to live-claim rounds only',
+      path: ['winCap'],
+    });
 
   r.post(
     '/api/v1/admin/auctions/rounds',
@@ -109,7 +123,12 @@ export default async function auctionRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const b = req.body;
       const round = await app.tx((tx) =>
-        createRound(tx, { ...b, actorId: req.auth!.memberId, requestId: req.id }),
+        createRound(tx, {
+          ...b,
+          winCap: b.type === 'LIVE_CLAIM' ? (b.winCap ?? 5) : null,
+          actorId: req.auth!.memberId,
+          requestId: req.id,
+        }),
       );
       return reply.status(201).send(roundOut(round));
     },
@@ -230,6 +249,8 @@ export default async function auctionRoutes(app: FastifyInstance) {
             serverTime: z.string(),
             items: z.array(itemOut),
             myWinCount: z.number(),
+            /** type 2: the categories this member is eligible for in this round (queue entry at or before the cutoff) */
+            eligibleCategories: z.array(z.string()),
           }),
         },
       },
@@ -251,6 +272,8 @@ export default async function auctionRoutes(app: FastifyInstance) {
         serverTime: now.toISOString(),
         items: await readItems(app.prisma, id),
         myWinCount: await myWinCount(app.prisma, id, me.memberId),
+        eligibleCategories:
+          round.type === 'QUEUE_RANKED' ? await eligibleCategories(app.prisma, id, me.memberId) : [],
       });
     },
   );
@@ -372,6 +395,113 @@ export default async function auctionRoutes(app: FastifyInstance) {
         items,
         myWinCount: items.length,
       };
+    },
+  );
+
+  // ---------- type 2: queues, preferences ----------
+  const queueOut = z.object({ category: z.string(), length: z.number(), myRank: z.number().nullable() });
+  const categoryParam = z.object({ category: safeString(20) });
+
+  r.get(
+    '/api/v1/auctions/queues',
+    {
+      schema: {
+        tags: ['auctions'],
+        response: {
+          200: z.array(
+            queueOut.extend({ entries: z.array(z.object({ rank: z.number(), memberId: z.string() })) }),
+          ),
+        },
+      },
+      onRequest: [requireAuth],
+    },
+    async (req) => readQueues(app.prisma, req.auth!.memberId),
+  );
+
+  r.put(
+    '/api/v1/auctions/queues/:category/me',
+    {
+      schema: { tags: ['auctions'], params: categoryParam, response: { 200: queueOut } },
+      onRequest: [requireAuth],
+    },
+    async (req) => {
+      const category = parseCategory(req.params.category);
+      return app.tx((tx) => joinQueue(tx, category, req.auth!.memberId, req.id));
+    },
+  );
+
+  r.delete(
+    '/api/v1/auctions/queues/:category/me',
+    {
+      schema: { tags: ['auctions'], params: categoryParam, response: { 200: queueOut } },
+      onRequest: [requireAuth],
+    },
+    async (req) => {
+      const category = parseCategory(req.params.category);
+      return app.tx((tx) => leaveQueue(tx, category, req.auth!.memberId, req.id));
+    },
+  );
+
+  const prefsOut = z.object({ roundId: z.number(), itemIds: z.array(z.number()) });
+  r.put(
+    '/api/v1/auctions/rounds/:id/preferences/me',
+    {
+      schema: {
+        tags: ['auctions'],
+        params: idParam,
+        body: z.object({ itemIds: z.array(z.number().int().positive()).max(500) }).strict(),
+        response: { 200: prefsOut },
+      },
+      onRequest: [requireAuth],
+    },
+    async (req) => {
+      const res = await app.tx((tx) =>
+        submitPreferences(tx, {
+          roundId: req.params.id,
+          memberId: req.auth!.memberId,
+          itemIds: req.body.itemIds,
+          requestId: req.id,
+        }),
+      );
+      return { roundId: req.params.id, ...res };
+    },
+  );
+
+  // Own list only (members never see other members' lists; admins use the admin route).
+  r.get(
+    '/api/v1/auctions/rounds/:id/preferences/me',
+    {
+      schema: { tags: ['auctions'], params: idParam, response: { 200: prefsOut } },
+      onRequest: [requireAuth],
+    },
+    async (req) => {
+      const me = req.auth!;
+      visible(await readRound(app.prisma, req.params.id), me.isAdmin);
+      return {
+        roundId: req.params.id,
+        itemIds: await readMyPreferences(app.prisma, req.params.id, me.memberId),
+      };
+    },
+  );
+
+  r.get(
+    '/api/v1/admin/auctions/rounds/:id/preferences',
+    {
+      schema: {
+        tags: ['auctions'],
+        params: idParam,
+        response: {
+          200: z.object({
+            roundId: z.number(),
+            lists: z.array(z.object({ memberId: z.string(), itemIds: z.array(z.number()) })),
+          }),
+        },
+      },
+      onRequest: [requireAdmin],
+    },
+    async (req) => {
+      await readRoundOrThrow(app.prisma, req.params.id);
+      return { roundId: req.params.id, lists: await readAllPreferences(app.prisma, req.params.id) };
     },
   );
 }

@@ -4,7 +4,7 @@
  * GLOBAL LOCK ORDER (always acquire in this order, never the reverse):
  *   1. Activity row(s)            (withActivityLock / lockActivities; several activities in ascending id order)
  *   2. AuctionRound row           (withRoundLock)
- *   3. category / member advisory locks, sorted  (memberClaimLock; categoryLocks arrives with type 2)
+ *   3. category / member advisory locks, sorted  (memberClaimLock, categoryLocks)
  *   4. ordinary rows
  *
  * The Activity row always exists, so lazily created Occurrence rows cannot escape it. Occurrence is a
@@ -44,6 +44,21 @@ export async function withRoundLock(tx: Tx, roundId: number, mode: 'SHARE' | 'UP
  * Serializes one member's claims in one round so two tabs cannot exceed the cap (taken AFTER the round lock,
  * per the global order). Released automatically at commit/rollback.
  */
-export async function memberClaimLock(tx: Tx, roundId: number, memberId: string): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`claim:${roundId}:${memberId}`}, 0))`;
+export async function memberClaimLock(
+  tx: Tx,
+  roundId: number,
+  memberId: string,
+  kind: 'claim' | 'pref' = 'claim',
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${kind}:${roundId}:${memberId}`}, 0))`;
+}
+
+/**
+ * Queue join/leave, round start (cutoffs), finalize and requeue serialize per category, so QueueEntry id order
+ * equals commit order. Several categories are always taken in sorted order (deadlock-free).
+ */
+export async function categoryLocks(tx: Tx, categories: readonly string[]): Promise<void> {
+  for (const c of [...new Set(categories)].sort()) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`queue:${c}`}, 0))`;
+  }
 }

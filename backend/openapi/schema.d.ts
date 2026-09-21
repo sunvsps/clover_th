@@ -1456,11 +1456,10 @@ export interface paths {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        type: "LIVE_CLAIM";
+                        type: "LIVE_CLAIM" | "QUEUE_RANKED";
                         name: string;
                         /** @default 300 */
                         durationSec?: number;
-                        /** @default 5 */
                         winCap?: number;
                         /** @default 3 */
                         startDelaySec?: number;
@@ -1823,9 +1822,11 @@ export interface paths {
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
+                                    queuePos: number | null;
                                 } | null;
                             }[];
                             myWinCount: number;
+                            eligibleCategories: string[];
                         };
                     };
                 };
@@ -1877,6 +1878,7 @@ export interface paths {
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
+                                    queuePos: number | null;
                                 } | null;
                             };
                             myWinCount: number;
@@ -1914,6 +1916,7 @@ export interface paths {
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
+                                    queuePos: number | null;
                                 } | null;
                             };
                             myWinCount: number;
@@ -1967,6 +1970,7 @@ export interface paths {
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
+                                    queuePos: number | null;
                                 } | null;
                             }[];
                             leftoverRoundId: number | null;
@@ -2022,9 +2026,232 @@ export interface paths {
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
+                                    queuePos: number | null;
                                 } | null;
                             }[];
                             myWinCount: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            category: string;
+                            length: number;
+                            myRank: number | null;
+                            entries: {
+                                rank: number;
+                                memberId: string;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/queues/{category}/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    category: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            category: string;
+                            length: number;
+                            myRank: number | null;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    category: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            category: string;
+                            length: number;
+                            myRank: number | null;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auctions/rounds/{id}/preferences/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            roundId: number;
+                            itemIds: number[];
+                        };
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        itemIds: number[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            roundId: number;
+                            itemIds: number[];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auctions/rounds/{id}/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            roundId: number;
+                            lists: {
+                                memberId: string;
+                                itemIds: number[];
+                            }[];
                         };
                     };
                 };

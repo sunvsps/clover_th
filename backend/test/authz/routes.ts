@@ -213,4 +213,37 @@ export const routes: RouteSpec[] = [
     url: '/api/v1/auctions/rounds/999999/results/me',
     auth: 'member',
   },
+  // WP9
+  { method: 'GET', pattern: '/api/v1/auctions/queues', url: '/api/v1/auctions/queues', auth: 'member' },
+  {
+    method: 'PUT',
+    pattern: '/api/v1/auctions/queues/:category/me',
+    url: '/api/v1/auctions/queues/PET/me',
+    auth: 'member',
+  },
+  {
+    method: 'DELETE',
+    pattern: '/api/v1/auctions/queues/:category/me',
+    url: '/api/v1/auctions/queues/PET/me',
+    auth: 'member',
+  },
+  {
+    method: 'PUT',
+    pattern: '/api/v1/auctions/rounds/:id/preferences/me',
+    url: '/api/v1/auctions/rounds/999999/preferences/me',
+    auth: 'member',
+    payload: { itemIds: [] },
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/auctions/rounds/:id/preferences/me',
+    url: '/api/v1/auctions/rounds/999999/preferences/me',
+    auth: 'member',
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/admin/auctions/rounds/:id/preferences',
+    url: '/api/v1/admin/auctions/rounds/999999/preferences',
+    auth: 'admin',
+  },
 ];

@@ -27,7 +27,7 @@ describe('QA OpenAPI vs routes', () => {
         if (['get', 'put', 'post', 'patch', 'delete'].includes(m)) documented.add(`${m.toUpperCase()} ${p}`);
     expect([...real].filter((x) => !documented.has(x))).toEqual([]);
     expect([...documented].filter((x) => !real.has(x))).toEqual([]);
-    expect(real.size).toBe(40); // 22 (WP1-6) + 7 planner (WP7a/b) + 11 auction routes (WP8)
+    expect(real.size).toBe(46); // 22 (WP1-6) + 7 planner (WP7a/b) + 11 auction type 1 (WP8) + 6 queue/preference (WP9)
   });
 
   it('design-listed WP1-WP6 routes all exist (6.1-6.4, 6.7 audit/notifications), and no admin-grant / member create/delete route exists', () => {

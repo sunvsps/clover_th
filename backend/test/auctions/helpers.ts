@@ -86,3 +86,62 @@ export const percentile = (xs: number[], p: number) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)]!;
 };
+
+// ---------- type 2 helpers ----------
+export const queueApi = (w: World) => ({
+  join: (h: H, category: string) =>
+    w.app.inject({ method: 'PUT', url: `/api/v1/auctions/queues/${category}/me`, headers: h }),
+  leave: (h: H, category: string) =>
+    w.app.inject({ method: 'DELETE', url: `/api/v1/auctions/queues/${category}/me`, headers: h }),
+  queues: (h: H) => w.app.inject({ url: '/api/v1/auctions/queues', headers: h }),
+  setPrefs: (h: H, roundId: number, itemIds: number[]) =>
+    w.app.inject({
+      method: 'PUT',
+      url: `/api/v1/auctions/rounds/${roundId}/preferences/me`,
+      headers: h,
+      payload: { itemIds },
+    }),
+  myPrefs: (h: H, roundId: number) =>
+    w.app.inject({ url: `/api/v1/auctions/rounds/${roundId}/preferences/me`, headers: h }),
+  adminPrefs: (h: H, roundId: number) =>
+    w.app.inject({ url: `/api/v1/admin/auctions/rounds/${roundId}/preferences`, headers: h }),
+});
+
+/** Creates a QUEUE_RANKED round with the given items and starts it (no delay). */
+export async function openQueueRound(
+  w: World,
+  admin: { h: H },
+  items: { name: string; category: Cat }[],
+  o: { durationSec?: number } = {},
+) {
+  const A = api(w);
+  const created = await A.create(admin.h, {
+    type: 'QUEUE_RANKED',
+    name: 'Queue round',
+    durationSec: o.durationSec ?? 300,
+    startDelaySec: 0,
+    items,
+  });
+  if (created.statusCode !== 201) throw new Error(`create failed: ${created.body}`);
+  const id = created.json().id as number;
+  const started = await A.start(admin.h, id);
+  if (started.statusCode !== 200) throw new Error(`start failed: ${started.body}`);
+  const rows = await w.db.prisma.auctionItem.findMany({ where: { roundId: id }, orderBy: { id: 'asc' } });
+  return { id, itemIds: rows.map((i) => i.id) };
+}
+
+/** Member ids of a queue, front to back, straight from the DB. */
+export async function queueOrder(w: World, category: Cat) {
+  return (await w.db.prisma.queueEntry.findMany({ where: { category }, orderBy: { id: 'asc' } })).map(
+    (q) => q.memberId,
+  );
+}
+
+/** Members join the queue one after another (so the order is deterministic). */
+export async function joinInOrder(w: World, members: { h: H }[], category: Cat) {
+  const Q = queueApi(w);
+  for (const m of members) {
+    const r = await Q.join(m.h, category);
+    if (r.statusCode !== 200) throw new Error(`join failed: ${r.body}`);
+  }
+}

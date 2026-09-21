@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 import { record } from '../../lib/audit.js';
 import { AppError } from '../../lib/errors.js';
-import { withRoundLock } from '../../lib/locks.js';
+import { categoryLocks, withRoundLock } from '../../lib/locks.js';
 import { isUniqueViolation } from '../../lib/pgErrors.js';
 import type { Tx } from '../../lib/tx.js';
+import { allocateRound } from './finalizer.js';
+import { QUEUE_CATEGORIES } from './allocation.js';
 
 type Db = Pick<Tx, '$queryRaw'>;
 
@@ -37,7 +39,8 @@ export type ItemView = {
   category: ItemCategory;
   rarity: string | null;
   imageUrl: string | null;
-  winner: { memberId: string; wonAt: string } | null;
+  /** queuePos: the winner's position in the frozen queue snapshot (type 2), null for a live claim */
+  winner: { memberId: string; wonAt: string; queuePos: number | null } | null;
 };
 
 export async function readRound(db: Db, id: number): Promise<RoundRow | null> {
@@ -66,6 +69,7 @@ type ItemRow = {
   imageUrl: string | null;
   winnerId: string | null;
   wonAt: Date | null;
+  queuePos: number | null;
 };
 
 const toItem = (i: ItemRow): ItemView => ({
@@ -74,23 +78,26 @@ const toItem = (i: ItemRow): ItemView => ({
   category: i.category,
   rarity: i.rarity,
   imageUrl: i.imageUrl,
-  winner: i.winnerId && i.wonAt ? { memberId: i.winnerId, wonAt: i.wonAt.toISOString() } : null,
+  winner:
+    i.winnerId && i.wonAt
+      ? { memberId: i.winnerId, wonAt: i.wonAt.toISOString(), queuePos: i.queuePos }
+      : null,
 });
 
 export async function readItems(db: Db, roundId: number, onlyWinner?: string): Promise<ItemView[]> {
   const rows = onlyWinner
     ? await db.$queryRaw<ItemRow[]>`
-        SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt" FROM "AuctionItem"
+        SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
         WHERE "roundId" = ${roundId} AND "winnerId" = ${onlyWinner}::uuid ORDER BY "sortOrder", id`
     : await db.$queryRaw<ItemRow[]>`
-        SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt" FROM "AuctionItem"
+        SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
         WHERE "roundId" = ${roundId} ORDER BY "sortOrder", id`;
   return rows.map(toItem);
 }
 
 export async function readItem(db: Db, roundId: number, itemId: number): Promise<ItemView | null> {
   const rows = await db.$queryRaw<ItemRow[]>`
-    SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt" FROM "AuctionItem"
+    SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
     WHERE id = ${itemId} AND "roundId" = ${roundId}`;
   return rows[0] ? toItem(rows[0]) : null;
 }
@@ -151,21 +158,39 @@ export async function roundFingerprint(db: Db, roundId: number, memberId: string
 
 // ---------- admin lifecycle ----------
 
+/** A type-2 round covers Gear, Card and Relic only; a type-1 round accepts any category (leftovers roll into it). */
+export function assertCategoriesForType(type: RoundRow['type'], items: ItemInput[]) {
+  if (type !== 'QUEUE_RANKED') return;
+  const bad = items.find((i) => !(QUEUE_CATEGORIES as readonly string[]).includes(i.category));
+  if (bad) {
+    throw new AppError(
+      'INVALID_CATEGORY_FOR_TYPE',
+      422,
+      'A queue round accepts only Gear, Card and Relic items',
+      {
+        category: bad.category,
+      },
+    );
+  }
+}
+
 export async function createRound(
   tx: Tx,
   a: {
+    type: RoundRow['type'];
     name: string;
     durationSec: number;
-    winCap: number;
+    winCap: number | null;
     startDelaySec: number;
     items: ItemInput[];
     actorId: string;
     requestId?: string;
   },
 ): Promise<RoundRow> {
+  assertCategoriesForType(a.type, a.items);
   const created = await tx.auctionRound.create({
     data: {
-      type: 'LIVE_CLAIM',
+      type: a.type,
       name: a.name,
       durationSec: a.durationSec,
       winCap: a.winCap,
@@ -180,7 +205,7 @@ export async function createRound(
     action: 'auction.round.create',
     entityType: 'auction_round',
     entityId: String(created.id),
-    meta: { type: 'LIVE_CLAIM', items: a.items.length, durationSec: a.durationSec, winCap: a.winCap },
+    meta: { type: a.type, items: a.items.length, durationSec: a.durationSec, winCap: a.winCap },
     requestId: a.requestId,
   });
   return readRoundOrThrow(tx, created.id);
@@ -211,6 +236,10 @@ export async function updateDraft(
   const r = await readRoundOrThrow(tx, id);
   if (r.status !== 'DRAFT') throw new AppError('ROUND_NOT_DRAFT', 409, 'Only a draft round can be edited');
   const { items, ...fields } = patch;
+  if (r.type === 'QUEUE_RANKED' && fields.winCap !== undefined) {
+    throw new AppError('VALIDATION_ERROR', 422, 'winCap applies to live-claim rounds only');
+  }
+  if (items) assertCategoriesForType(r.type, items);
   if (Object.keys(fields).length > 0) {
     await tx.auctionRound.update({ where: { id }, data: fields });
   }
@@ -243,7 +272,42 @@ export async function finalizeRound(tx: Tx, id: number): Promise<boolean> {
     UPDATE "AuctionRound" SET status = 'CLOSED', "closedAt" = "closesAt"
     WHERE id = ${id} AND status = 'OPEN' AND "closesAt" <= clock_timestamp()
     RETURNING id`;
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  // Type 2: allocation runs in this same transaction (idempotent through allocatedAt).
+  const round = await readRoundOrThrow(tx, id);
+  if (round.type === 'QUEUE_RANKED') await allocateRound(tx, round);
+  return true;
+}
+
+/**
+ * The submit/claim gate (design 7.1, 7.2, B2): the round row FOR SHARE, then the window is checked DB-side after
+ * any lock wait. Finalize and admin close take FOR UPDATE, so a write that passed this gate always finishes before
+ * they read the round's inputs, and later writers see CLOSED.
+ */
+export async function openWindow(
+  tx: Tx,
+  roundId: number,
+  type: RoundRow['type'],
+): Promise<{ winCap: number | null }> {
+  await withRoundLock(tx, roundId, 'SHARE');
+  const [g] = await tx.$queryRaw<
+    { type: string; status: string; winCap: number | null; early: boolean; late: boolean }[]
+  >`
+    SELECT type, status, "winCap",
+           ("opensAt" IS NOT NULL AND clock_timestamp() < "opensAt") AS early,
+           ("closesAt" IS NOT NULL AND clock_timestamp() > "closesAt") AS late
+    FROM "AuctionRound" WHERE id = ${roundId}`;
+  if (g!.type !== type) {
+    throw new AppError(
+      'ROUND_TYPE_MISMATCH',
+      409,
+      `This is not a ${type === 'LIVE_CLAIM' ? 'live-claim' : 'queue'} round`,
+    );
+  }
+  if (g!.status === 'DRAFT') throw new AppError('ROUND_NOT_OPEN', 409, 'The round has not started');
+  if (g!.status !== 'OPEN' || g!.late) throw new AppError('ROUND_CLOSED', 409, 'The round is closed');
+  if (g!.early) throw new AppError('ROUND_NOT_OPEN', 409, 'The round has not opened yet');
+  return { winCap: g!.winCap };
 }
 
 /** Ids of OPEN rounds whose window has ended (optionally of one type). */
@@ -281,6 +345,15 @@ export async function startRound(
 
   const delay = o.startDelaySec ?? r.startDelaySec;
   const duration = o.durationSec ?? r.durationSec;
+  let cutoffCategories: string[] = [];
+  if (r.type === 'QUEUE_RANKED') {
+    // Inside the category locks (after the round lock, sorted), so the cutoff is a consistent queue cut:
+    // entries with id <= cutoff are eligible, joins during the window get bigger ids.
+    const cats = await tx.$queryRaw<{ category: string }[]>`
+      SELECT DISTINCT category::text AS category FROM "AuctionItem" WHERE "roundId" = ${id}`;
+    cutoffCategories = cats.map((c) => c.category).sort();
+    await categoryLocks(tx, cutoffCategories);
+  }
   try {
     // opensAt and closesAt come from ONE clock_timestamp() reading, DB side.
     await tx.$executeRaw`
@@ -294,6 +367,12 @@ export async function startRound(
       throw new AppError('ANOTHER_ROUND_OPEN', 409, 'Another round of this type is already open');
     }
     throw err;
+  }
+  for (const category of cutoffCategories) {
+    await tx.$executeRaw`
+      INSERT INTO "RoundQueueCutoff" ("roundId", category, "cutoffId")
+      VALUES (${id}, ${category}::"ItemCategory",
+              COALESCE((SELECT max(id) FROM "QueueEntry" WHERE category = ${category}::"ItemCategory"), 0))`;
   }
   const started = await readRoundOrThrow(tx, id);
   await record(tx, {
@@ -328,6 +407,8 @@ export async function closeRound(tx: Tx, id: number, actorId: string, requestId?
     UPDATE "AuctionRound"
     SET status = 'CLOSED', "closesAt" = LEAST("closesAt", clock_timestamp()), "closedAt" = clock_timestamp()
     WHERE id = ${id}`;
+  // Type 2: an early close allocates in the same transaction (design 6.7); results are published at close.
+  if (r.type === 'QUEUE_RANKED') await allocateRound(tx, r, requestId);
   await record(tx, {
     actorType: 'MEMBER',
     actorId,
