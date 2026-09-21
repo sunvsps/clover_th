@@ -47,6 +47,7 @@ export function mockApi({ me = meAdmin }: { me?: Me | null } = {}) {
     http.get("*/api/v1/jobs", () => HttpResponse.json(wireJobs)),
     http.get("*/api/v1/events", () => HttpResponse.json(wireEvents)),
     http.get("*/api/v1/activities", () => HttpResponse.json(wireActivities)),
+    http.get("*/api/v1/registrations", () => HttpResponse.json({ from: "", to: "", serverTime: new Date().toISOString(), occurrences: {} })),
     http.post("*/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
   );
 }
@@ -54,3 +55,101 @@ export function mockApi({ me = meAdmin }: { me?: Me | null } = {}) {
 /** UI-domain roster used by the hook-level harness (already adapted from the wire shapes). */
 export const testJobs = wireJobs.map((j) => ({ id: j.id, label: j.label, color: j.color }));
 export const testMembers = wireMembers.map((m) => ({ id: m.id, ign: m.ign, job: m.jobId }));
+
+type FakeRow = { memberId: string; status: "JOINED" | "WAITLISTED" | "LEAVE" };
+type Wire = { memberId: string; status: FakeRow["status"]; waitlistPos?: number; placed?: boolean; reserveOrder?: number | null };
+
+/**
+ * A small in-memory stand-in for the registrations API: capacity + waitlist + promotion (the real rules live in the
+ * backend and are tested there). `key` is "YYYY-MM-DD:eventId". Handlers are added with `server.use`.
+ */
+export function fakeRegistrations(opts: { me: Me; capacity?: Record<string, number>; planner?: Set<string>; failWith?: string }) {
+  const rows = new Map<string, FakeRow[]>();
+  const puts: { url: string; body: unknown; xrw: string | null }[] = [];
+  const gets: { from: string; to: string }[] = [];
+  const activityOfEvent = (eventId: string) => wireEvents.find((e) => e.id === eventId)?.activityId ?? "";
+  const list = (key: string) => rows.get(key) ?? rows.set(key, []).get(key)!;
+
+  const wire = (key: string): Wire[] => {
+    const all = list(key);
+    const planner = opts.planner?.has(activityOfEvent(key.slice(11)));
+    let waitPos = 0;
+    let reserve = 0;
+    return all.map((r) => {
+      const w: Wire = { memberId: r.memberId, status: r.status };
+      if (r.status === "WAITLISTED") w.waitlistPos = ++waitPos;
+      if (planner) {
+        w.placed = r.status === "JOINED" && placed.has(`${key}|${r.memberId}`);
+        w.reserveOrder = r.status === "JOINED" && !w.placed ? ++reserve : null;
+      }
+      return w;
+    });
+  };
+  const placed = new Set<string>();
+
+  server.use(
+    http.get("*/api/v1/registrations", ({ request }) => {
+      const url = new URL(request.url);
+      const from = url.searchParams.get("from")!;
+      const to = url.searchParams.get("to")!;
+      gets.push({ from, to });
+      const occurrences: Record<string, Wire[]> = {};
+      for (const key of rows.keys()) if (key.slice(0, 10) >= from && key.slice(0, 10) <= to && list(key).length) occurrences[key] = wire(key);
+      return HttpResponse.json({ from, to, serverTime: new Date().toISOString(), occurrences });
+    }),
+    http.put("*/api/v1/events/:eventId/occurrences/:date/registrations/:memberId", async ({ request, params }) => {
+      const body = (await request.json()) as { status: "JOINED" | "LEAVE" | "NONE" };
+      puts.push({ url: new URL(request.url).pathname, body, xrw: request.headers.get("x-requested-with") });
+      if (opts.failWith) return HttpResponse.json({ error: { code: opts.failWith, message: "x", details: {} } }, { status: 409 });
+      const target = params.memberId === "me" ? opts.me.memberId : String(params.memberId);
+      if (target !== opts.me.memberId && !opts.me.isAdmin)
+        return HttpResponse.json({ error: { code: "FORBIDDEN_OTHER_MEMBER", message: "x", details: {} } }, { status: 403 });
+      const key = `${params.date}:${params.eventId}`;
+      const result = fakeSet(key, String(params.eventId), target, body.status);
+      return HttpResponse.json(result);
+    }),
+  );
+
+  function fakeSet(key: string, eventId: string, memberId: string, requested: "JOINED" | "LEAVE" | "NONE") {
+    const all = list(key);
+    const cap = opts.capacity?.[activityOfEvent(eventId)];
+    const idx = all.findIndex((r) => r.memberId === memberId);
+    const wasJoined = idx >= 0 && all[idx]!.status === "JOINED";
+    if (idx >= 0) all.splice(idx, 1);
+    let status: FakeRow["status"] | "NONE" = "NONE";
+    if (requested === "LEAVE") {
+      all.push({ memberId, status: "LEAVE" });
+      status = "LEAVE";
+    } else if (requested === "JOINED") {
+      const joined = all.filter((r) => r.status === "JOINED").length;
+      status = cap !== undefined && joined >= cap ? "WAITLISTED" : "JOINED";
+      all.push({ memberId, status });
+    }
+    const promoted = wasJoined && requested !== "JOINED" ? promoteFrom(key, cap) : [];
+    const pos = status === "WAITLISTED" ? all.filter((r) => r.status === "WAITLISTED").findIndex((r) => r.memberId === memberId) + 1 : null;
+    return { status, waitlistPosition: pos, promoted, backfilled: [], planVersion: 1 };
+  }
+  function promoteFrom(key: string, cap: number | undefined) {
+    const all = list(key);
+    const out: string[] = [];
+    while (cap !== undefined && all.filter((r) => r.status === "JOINED").length < cap) {
+      const next = all.find((r) => r.status === "WAITLISTED");
+      if (!next) break;
+      next.status = "JOINED";
+      out.push(next.memberId);
+    }
+    return out;
+  }
+
+  return {
+    puts,
+    gets,
+    /** seed a row directly (as if another member had acted) */
+    seed: (key: string, memberId: string, status: FakeRow["status"], opts2: { placed?: boolean } = {}) => {
+      list(key).push({ memberId, status });
+      if (opts2.placed) placed.add(`${key}|${memberId}`);
+    },
+    /** another member unregisters (with promotion), outside the UI */
+    externalUnregister: (key: string, eventId: string, memberId: string) => fakeSet(key, eventId, memberId, "NONE"),
+  };
+}

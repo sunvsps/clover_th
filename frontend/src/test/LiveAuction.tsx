@@ -16,7 +16,6 @@ export default function LiveAuction({ notify = () => {} }: { notify?: (message: 
   const guild = useGuildState({
     initialMembers: testMembers,
     initialJobs: testJobs,
-    memberId: signedIn ? "m-aria" : "",
     isAdmin: signedIn && asAdmin,
     isThai: false,
     notify,

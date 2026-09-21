@@ -57,3 +57,6 @@ export const yearOf = (key: DateKey) => Number(key.slice(0, 4));
 const timeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: BANGKOK_TZ, hour: "2-digit", minute: "2-digit", hour12: false });
 /** "HH:mm" wall-clock time in Bangkok for an ISO instant. */
 export const bangkokTime = (iso: string | Date) => timeFormat.format(typeof iso === "string" ? new Date(iso) : iso);
+
+/** The instant (epoch ms) an occurrence starts: `dateKey` at wall-clock `HH:mm` in Bangkok (UTC+7, no DST). */
+export const occurrenceStartMs = (key: DateKey, hhmm: string) => Date.parse(`${key}T${hhmm}:00+07:00`);

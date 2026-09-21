@@ -47,4 +47,22 @@ describe("usePolling", () => {
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(result.current.serverNow() - Date.now()).toBe(5000);
   });
+
+  it("refresh() and window focus fetch immediately; changing the key restarts polling", async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    const fetcher = vi.fn(async () => ++n);
+    const { result, rerender } = renderHook(({ k }) => usePolling(fetcher, { intervalMs: 60_000, key: k }), { initialProps: { k: "a" } });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await act(async () => result.current.refresh());
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    rerender({ k: "b" });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
 });

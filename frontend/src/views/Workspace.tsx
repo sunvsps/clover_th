@@ -32,7 +32,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
   const guild = useGuildState({
     initialMembers: data.members,
     initialJobs: data.jobs,
-    memberId: session.memberId,
     isAdmin: session.isAdmin,
     isThai,
     notify,
@@ -84,8 +83,7 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
             jobs={guild.jobs}
             members={guild.members}
             events={data.events}
-            attendance={guild.attendance}
-            onSetAttendance={guild.updateAttendance}
+            activities={data.activities}
             onNotice={notify}
           />
         </div>

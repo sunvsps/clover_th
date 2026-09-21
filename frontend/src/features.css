@@ -304,3 +304,9 @@
   .feature-content { padding-inline: 15px; }
   .pool-chips { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
+
+.event-capacity, .event-capacity-badge { font-weight: 700; }
+.event-closed { display: block; margin-top: 4px; color: #e8a95b; }
+.schedule-error { margin: 8px 0; color: #e88a7a; }
+.person.waitlisted { border-style: dashed; }
+.event-dialog-actions button:disabled { opacity: 0.5; cursor: not-allowed; }

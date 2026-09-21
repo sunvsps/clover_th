@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { SUBTEAM_SIZE, type Attendance, type GuildMember, type Job } from "../data/guild";
-import type { AttendanceBook } from "../components/WeeklySchedule";
+import { SUBTEAM_SIZE, type GuildMember, type Job } from "../data/guild";
 import type { TeamAssignments } from "../components/TeamPlanner";
 
 let localId = 0; // ids of members added by the local (mock) roster editor
@@ -9,7 +8,6 @@ type Options = {
   /** roster and jobs as loaded from the API; they seed the state (the edits below are still local mock state) */
   initialMembers: GuildMember[];
   initialJobs: Job[];
-  memberId: string;
   isAdmin: boolean;
   isThai: boolean;
   notify: (message: string) => void;
@@ -18,14 +16,13 @@ type Options = {
 };
 
 /**
- * Roster, jobs, weekly attendance and team assignments, all keyed by memberId. The roster and jobs START from the API
- * data; attendance, team assignments and the roster/job edits are still LOCAL mock state until WP12/WP13/WP15 replace
+ * Roster, jobs and team assignments, all keyed by memberId. The roster and jobs START from the API
+ * data; team assignments and the roster/job edits are still LOCAL mock state until WP13/WP15 replace
  * them with API calls.
  */
 export function useGuildState({
   initialMembers,
   initialJobs,
-  memberId,
   isAdmin,
   isThai,
   notify,
@@ -34,7 +31,6 @@ export function useGuildState({
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [members, setMembers] = useState<GuildMember[]>(initialMembers);
   const ignOf = (id: string) => members.find((member) => member.id === id)?.ign ?? id;
-  const [attendance, setAttendance] = useState<AttendanceBook>({});
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignments>({});
 
   function assignMember(member: string, slot: string) {
@@ -64,24 +60,6 @@ export function useGuildState({
     notify(isThai ? "ล้างการจัดทีมทั้งหมดแล้ว" : "All team assignments cleared.");
   }
 
-  function updateAttendance(key: string, member: string, status: Attendance | null) {
-    if (member !== memberId && !isAdmin) return;
-    setAttendance((book) => {
-      const entry = { ...(book[key] ?? {}) };
-      if (status) entry[member] = status;
-      else delete entry[member];
-      return { ...book, [key]: entry };
-    });
-    const who = member === memberId ? (isThai ? "คุณ" : "You") : ignOf(member);
-    notify(
-      status === "joined"
-        ? isThai ? `${who} ลงทะเบียนเล่นแล้ว` : `${who} registered as playing.`
-        : status === "leave"
-          ? isThai ? `บันทึกการลาของ ${who} แล้ว` : `Leave saved for ${who}.`
-          : isThai ? `ล้างสถานะของ ${who} แล้ว` : `Status cleared for ${who}.`,
-    );
-  }
-
   function addMember(name: string, job: number) {
     if (!isAdmin || !name) return false;
     if (members.some((member) => member.ign.toLowerCase() === name.toLowerCase())) {
@@ -101,7 +79,7 @@ export function useGuildState({
       notify(isThai ? `มีชื่อ ${newIgn} อยู่แล้ว` : `${newIgn} is already on the roster.`);
       return false;
     }
-    // ids never change, so assignments and attendance need no re-keying
+    // ids never change, so assignments need no re-keying
     setMembers((current) => current.map((member) => (member.id === id ? { ...member, ign: newIgn } : member)));
     notify(isThai ? `เปลี่ยนชื่อ ${oldIgn} เป็น ${newIgn} แล้ว` : `${oldIgn} renamed to ${newIgn}.`);
     return true;
@@ -140,12 +118,10 @@ export function useGuildState({
   return {
     jobs,
     members,
-    attendance,
     teamAssignments,
     assignMember,
     removeMemberFromTeam,
     clearTeams,
-    updateAttendance,
     addMember,
     renameMember,
     setMemberJob,
