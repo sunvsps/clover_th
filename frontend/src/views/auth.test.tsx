@@ -1,11 +1,11 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { get, LOGIN_URL } from "../api";
 import { navigate } from "../lib/navigate";
-import { fakePlanner, meAdmin, meUser, mockApi, wireMembers } from "../test/api";
+import { fakePlanner, meAdmin, meUser, mockApi, wireActivities, wireEvents, wireJobs, wireMembers } from "../test/api";
 import { server } from "../test/server";
 
 vi.mock("../lib/navigate", () => ({ navigate: vi.fn() }));
@@ -108,6 +108,72 @@ describe("sign-in and /me", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Cannot load your account" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+});
+
+describe("demo login (local only)", () => {
+  const demoMembers = [
+    { memberId: "m-aria", discordId: "900000000000000000", ign: "Aria", nickname: null, isAdmin: true },
+    { memberId: "m-bo", discordId: "900000000000000001", ign: "Bo", nickname: null, isAdmin: false },
+  ];
+
+  it("is absent, and quiet, when the backend answers 404 (the normal case)", async () => {
+    mockApi({ me: null });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Clover guild tools" });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByText(/Demo login/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("lists the members with the admin badge; one click signs in through POST /demo/login and loads /me", async () => {
+    mockApi({ me: null });
+    let signedIn = false;
+    let posted: unknown = null;
+    let csrf: string | null = null;
+    server.use(
+      http.get("*/api/v1/demo/members", () => HttpResponse.json(demoMembers)),
+      http.post("*/api/v1/demo/login", async ({ request }) => {
+        posted = await request.json();
+        csrf = request.headers.get("x-requested-with");
+        signedIn = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.get("*/api/v1/me", () => (signedIn ? HttpResponse.json(meUser) : HttpResponse.json({ error: { code: "AUTH_REQUIRED", message: "x", details: {} } }, { status: 401 }))),
+      http.get("*/api/v1/members", () => HttpResponse.json(wireMembers)),
+      http.get("*/api/v1/jobs", () => HttpResponse.json(wireJobs)),
+      http.get("*/api/v1/events", () => HttpResponse.json(wireEvents)),
+      http.get("*/api/v1/activities", () => HttpResponse.json(wireActivities)),
+    );
+    render(<App />);
+    const panel = await screen.findByRole("region", { name: "Demo login (local only)" });
+    expect(panel).toHaveTextContent("Aria");
+    expect(panel).toHaveTextContent("Admin");
+    await userEvent.setup({ delay: null }).click(within(panel).getByRole("button", { name: "Sign in as Bo" }));
+    expect(await screen.findByText("USER")).toBeInTheDocument(); // the profile from /me
+    expect(posted).toEqual({ discordId: "900000000000000001" });
+    expect(csrf).toBe("clover-web");
+  });
+
+  it("shows the server's answer when the login is refused", async () => {
+    mockApi({ me: null });
+    server.use(
+      http.get("*/api/v1/demo/members", () => HttpResponse.json(demoMembers)),
+      http.post("*/api/v1/demo/login", () => HttpResponse.json({ error: { code: "AUTH_NOT_REGISTERED", message: "x", details: {} } }, { status: 403 })),
+    );
+    render(<App />);
+    const panel = await screen.findByRole("region", { name: "Demo login (local only)" });
+    await userEvent.setup({ delay: null }).click(within(panel).getByRole("button", { name: "Sign in as Aria" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("not registered with the guild");
+  });
+
+  it("is available in Thai", async () => {
+    mockApi({ me: null });
+    server.use(http.get("*/api/v1/demo/members", () => HttpResponse.json(demoMembers)));
+    render(<App />);
+    await screen.findByRole("region", { name: "Demo login (local only)" });
+    await userEvent.setup({ delay: null }).click(screen.getByTitle("Switch language"));
+    expect(screen.getByRole("region", { name: /เข้าสู่ระบบสาธิต/ })).toBeInTheDocument();
   });
 });
 

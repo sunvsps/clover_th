@@ -1,6 +1,6 @@
 # Testing the Clover_TH API with Postman (no Discord app needed)
 
-This is for **local development only**. It uses the break-glass script `scripts/dev-login.ts`, which creates a session for a seeded member. It refuses to run when `NODE_ENV=production` and has no HTTP route, so it cannot be used against a real deployment. The cookie it prints is a live login: keep it in your terminal and in Postman, never in chat, tickets or shared logs.
+This is for **local development only**. It uses the break-glass script `scripts/dev-login.ts`, which creates a session for a seeded member. It refuses to run when `NODE_ENV=production`. It has no HTTP route of its own; the only HTTP way in without Discord is the local demo login (`LOCAL_DEMO_ENABLED=true`, loopback only, refused in production), so neither can be used against a real deployment. The cookie it prints is a live login: keep it in your terminal and in Postman, never in chat, tickets or shared logs.
 
 ## 1. Start the database
 

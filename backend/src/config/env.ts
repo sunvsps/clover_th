@@ -30,6 +30,16 @@ const schema = z
      * on = serve, and refuse to start when the directory has no index.html; off = never serve it.
      */
     SERVE_FRONTEND: z.enum(['auto', 'on', 'off']).default('auto'),
+    /**
+     * LOCAL DEMOS ONLY. `true` registers /api/v1/demo/* (a login without Discord for loopback callers). Strictly
+     * "true" or "false"; the server refuses to start with it on in production.
+     */
+    LOCAL_DEMO_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    /** Same escape hatch as scripts/dev-login.ts: allow the demo login against a non-local database. */
+    DEV_LOGIN_ALLOW_REMOTE_DB: z.string().optional(),
     /** Where the built frontend is. Default: ../frontend/dist next to the backend (a relative value is taken from the working directory). */
     FRONTEND_DIST_DIR: z.string().min(1).optional(),
     BOT_API_KEYS: z
@@ -94,6 +104,13 @@ const schema = z
         path: ['TRUST_PROXY'],
         message:
           'TRUST_PROXY=true trusted the whole X-Forwarded-For chain and is no longer supported: set TRUST_PROXY_HOPS (number of trusted proxies, usually 1) or TRUST_PROXY_CIDRS',
+      });
+    }
+    if (v.LOCAL_DEMO_ENABLED && v.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['LOCAL_DEMO_ENABLED'],
+        message: 'LOCAL_DEMO_ENABLED=true is for local demos only and is refused when NODE_ENV=production',
       });
     }
     if (v.SESSION_ABSOLUTE_DAYS < v.SESSION_SLIDING_DAYS) {

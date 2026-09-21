@@ -123,11 +123,18 @@ describe('scripts/dev-login.ts', () => {
   });
 });
 
-describe('there is no HTTP dev-login route', () => {
-  it('nothing under /auth or elsewhere creates a session without Discord', async () => {
+describe('no HTTP login route exists unless LOCAL_DEMO_ENABLED=true', () => {
+  it('with the flag off (the default) nothing creates a session without Discord', async () => {
     const app = await createTestApp(db);
     await app.ready();
-    for (const url of ['/api/v1/auth/dev-login', '/api/v1/dev-login', '/api/v1/auth/session', '/dev-login']) {
+    for (const url of [
+      '/api/v1/auth/dev-login',
+      '/api/v1/dev-login',
+      '/api/v1/auth/session',
+      '/dev-login',
+      '/api/v1/demo/login',
+      '/api/v1/demo/members',
+    ]) {
       for (const method of ['GET', 'POST', 'PUT'] as const)
         expect((await app.inject({ method, url })).statusCode).toBe(404);
     }

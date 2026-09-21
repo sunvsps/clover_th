@@ -51,9 +51,12 @@ DISCORD_CLIENT_ID=dummy
 DISCORD_CLIENT_SECRET=dummy
 DISCORD_REDIRECT_URI=http://localhost:3000/api/v1/auth/discord/callback
 BOT_API_KEYS=0000000000000000000000000000000000000000000000000000000000000000
+LOCAL_DEMO_ENABLED=true
 ```
 
 `FRONTEND_URL` ต้องตรงกับที่เปิดในเบราว์เซอร์เป๊ะ (พอร์ต 3000) เพราะ backend ตรวจ `Origin` กับค่านี้ ส่วนค่า Discord ใส่หลอกไว้ได้ถ้ายังไม่ล็อกอินด้วย Discord จริง
+
+`LOCAL_DEMO_ENABLED=true` เปิดปุ่มล็อกอินสาธิตในหน้าเว็บ (ดูหัวข้อถัดไป) ใช้เฉพาะในเครื่องตัวเอง **ห้ามตั้งบนเซิร์ฟเวอร์จริง** ถ้าตั้งคู่กับ `NODE_ENV=production` เซิร์ฟเวอร์จะไม่ยอมสตาร์ท และค่าต้องเป็น `true` หรือ `false` เท่านั้น
 
 `BOT_API_KEYS` **ห้ามเว้นว่าง** ต้องเป็นค่า sha256 (ตัวอักษร hex 64 ตัว) 1 หรือ 2 ค่าคั่นด้วยจุลภาค ไม่งั้นเซิร์ฟเวอร์จะไม่ยอมสตาร์ท ถ้ายังไม่ต่อบอท ใช้ค่าศูนย์ 64 ตัวตามตัวอย่างข้างบนได้ (ไม่มี key ใดที่แปลงเป็นค่านี้ได้ จึงเท่ากับปิด endpoint ของบอท) เมื่อจะต่อบอทจริงให้สร้างค่าด้วย `npm run hash-bot-key -- --generate`
 
@@ -89,7 +92,11 @@ npm run dev
 
 ## ล็อกอินตอนพัฒนา
 
-**วิธี A: cookie ทดสอบ (ไม่ต้องใช้ Discord)** ใน `backend/` (โหลด env แล้ว)
+**ตอนนี้ยังไม่ได้ต่อ Discord จริง** (ยังไม่มี Discord application) ปุ่ม "Sign in with Discord" จึงยังใช้ไม่ได้ ให้ใช้ล็อกอินสาธิตแทน
+
+**วิธีที่ง่ายที่สุด: ล็อกอินสาธิต** ตั้ง `LOCAL_DEMO_ENABLED=true` ใน `backend/.env` แล้วรีสตาร์ทเซิร์ฟเวอร์ เปิด http://localhost:3000 จะเห็นกล่อง "Demo login (local only)" รายชื่อสมาชิกตัวอย่าง (แอดมินมีป้าย Admin) กดปุ่ม "Sign in" ข้างชื่อที่ต้องการ ก็เข้าระบบเป็นคนนั้น ปุ่มนี้ทำงานเฉพาะกับเครื่องที่รันเซิร์ฟเวอร์ (loopback) และเมื่อปิด flag เส้นทาง `/api/v1/demo/*` จะไม่มีอยู่เลย (404)
+
+**วิธีทางเลือก: cookie ทดสอบ (ไม่ต้องใช้ Discord และไม่ต้องตั้ง flag)** ใน `backend/` (โหลด env แล้ว)
 
 ```bash
 npm run dev-login -- 900000000000000000
@@ -101,9 +108,9 @@ npm run dev-login -- 900000000000000000
 document.cookie = "session=<ค่าที่ได้>; path=/"
 ```
 
-รีเฟรชหน้า ก็จะล็อกอินเป็นสมาชิกคนนั้น สคริปต์นี้ทำงานเฉพาะนอก production และไม่มี HTTP route ให้ใช้ cookie นี้ล็อกอินได้จริง อย่าส่งต่อหรือเก็บลงไฟล์
+รีเฟรชหน้า ก็จะล็อกอินเป็นสมาชิกคนนั้น สคริปต์นี้ทำงานเฉพาะนอก production อย่าส่งต่อหรือเก็บลงไฟล์
 
-**วิธี B: Discord จริง** สร้าง application ใน Discord Developer Portal เพิ่ม redirect URI ให้ตรงกับ `DISCORD_REDIRECT_URI` แล้วใส่ `DISCORD_CLIENT_ID` กับ `DISCORD_CLIENT_SECRET` ใน `.env` เฉพาะสมาชิกที่บอทลงทะเบียนและยังใช้งานอยู่เท่านั้นที่ล็อกอินได้
+**Discord จริง (ยังไม่ได้ต่อ)** สร้าง application ใน Discord Developer Portal เพิ่ม redirect URI ให้ตรงกับ `DISCORD_REDIRECT_URI` แล้วใส่ `DISCORD_CLIENT_ID` กับ `DISCORD_CLIENT_SECRET` ใน `.env` เฉพาะสมาชิกที่บอทลงทะเบียนและยังใช้งานอยู่เท่านั้นที่ล็อกอินได้
 
 ## โหมดพัฒนา frontend (hot reload)
 

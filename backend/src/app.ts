@@ -27,6 +27,7 @@ import notificationRoutes from './modules/notifications/routes.js';
 import plannerRoutes from './modules/planner/routes.js';
 import registrationRoutes from './modules/registrations/routes.js';
 import csrf from './plugins/csrf.js';
+import demoRoutes from './modules/demo/routes.js';
 import frontend from './plugins/frontend.js';
 import errorHandler from './plugins/errorHandler.js';
 import { genReqId, default as requestId } from './plugins/requestId.js';
@@ -158,6 +159,8 @@ export async function buildApp(opts: BuildOptions) {
   await app.register(frontend); // static files + SPA fallback, only when a built frontend is found
   await app.register(healthRoutes);
   await app.register(authRoutes);
+  // LOCAL demo login: registered only with LOCAL_DEMO_ENABLED=true (refused in production); otherwise these paths do not exist
+  if (env.LOCAL_DEMO_ENABLED) await app.register(demoRoutes);
   await app.register(botRoutes);
   await app.register(auditRoutes);
   await app.register(memberRoutes);

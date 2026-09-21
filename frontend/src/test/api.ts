@@ -50,6 +50,8 @@ export function mockApi({ me = meAdmin }: { me?: Me | null } = {}) {
     http.get("*/api/v1/registrations", () => HttpResponse.json({ from: "", to: "", serverTime: new Date().toISOString(), occurrences: {} })),
     http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [] })),
     http.get("*/api/v1/auctions/queues", () => HttpResponse.json([])),
+    // the demo login is off on a normal backend: a plain 404
+    http.get("*/api/v1/demo/members", () => HttpResponse.json({ error: { code: "NOT_FOUND", message: "x", details: {} } }, { status: 404 })),
     http.post("*/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
   );
 }

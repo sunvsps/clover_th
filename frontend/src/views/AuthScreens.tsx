@@ -1,6 +1,7 @@
 import { Hash } from "lucide-react";
 import { messageForCode } from "../api";
 import type { Session } from "../hooks/useSession";
+import DemoLogin from "./DemoLogin";
 
 type Props = { session: Session; isThai: boolean };
 
@@ -73,6 +74,7 @@ export default function AuthScreens({ session, isThai }: Props) {
       <button className="top-login-button" type="button" onClick={session.signIn}>
         <Hash size={15} /> {t("Sign in with Discord", "เข้าสู่ระบบด้วย Discord")}
       </button>
+      <DemoLogin isThai={isThai} onSignedIn={() => void session.retry()} />
     </section>
   );
 }

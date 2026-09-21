@@ -40,6 +40,7 @@ Set `FRONTEND_URL=http://localhost:3000` in `backend/.env` (the CSRF check compa
 The Sign-in button goes to `/api/v1/auth/discord/login`. Two ways to get a session in development:
 
 - **Real Discord app.** Create an application in the Discord developer portal, add the redirect `http://localhost:5173/api/v1/auth/discord/callback`, and put `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` and `DISCORD_REDIRECT_URI` in `backend/.env`. Only members registered through the bot (and active) can sign in; anyone else lands on a clear "not registered" / "deactivated" screen.
+- **Demo login (no Discord, easiest).** Put `LOCAL_DEMO_ENABLED=true` in `backend/.env`, restart the backend, open the app while signed out and click a member under "Demo login (local only)". The panel appears only when the backend offers it (it answers only this machine and never runs in production); otherwise the sign-in screen is unchanged. Real Discord login is not connected yet.
 - **Dev login cookie (no Discord).** In `backend/` run `npm run dev-login -- 900000000000000000` (see `docs/postman.md`). It prints a session cookie for a seeded member; in the browser console on http://localhost:5173 run `document.cookie = "session=<value>; path=/"` and reload. The cookie is a live login: do not paste it into files, chat or logs.
 
 `?authError=` (set by the backend after a failed login) shows a separate screen for `AUTH_NOT_REGISTERED`, `AUTH_MEMBER_INACTIVE`, `AUTH_STATE_INVALID` and `AUTH_OAUTH_FAILED`. A 401 while using the app shows "session expired".

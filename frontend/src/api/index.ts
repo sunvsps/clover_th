@@ -9,3 +9,4 @@ export * from "./registrations";
 export * from "./planner";
 export * from "./auctions";
 export * from "./admin";
+export * from "./demo";
