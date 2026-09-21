@@ -548,3 +548,12 @@
 .roster-import .summary-meta { margin: 14px 0 8px; }
 .roster-import .summary-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .roster-import .editor-actions { margin-top: 12px; }
+
+/* ---------- Demo (mock API) mode ---------- */
+.demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 6px; padding: 9px 14px; color: #e8dcb0; background: #2d2618; border: 1px dashed #7a6a3a; border-radius: 8px; font-size: 12px; }
+.demo-banner strong { color: #ffe08a; }
+.demo-banner .link-button { margin-left: auto; color: #ffe08a; }
+.demo-login { width: min(460px, 100%); }
+.demo-members { max-height: 50vh; margin: 10px 0 0; padding: 0; list-style: none; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.demo-members button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; color: #e8eee6; background: #1c211d; border: 1px solid #2b302c; border-radius: 6px; text-align: left; font-size: 13px; font-weight: 600; }
+.demo-members button:hover { border-color: #b9e86d; background: #263523; }

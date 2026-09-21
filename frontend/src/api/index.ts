@@ -1,6 +1,7 @@
 import { api, type ApiBody, type ApiResponse } from "./client";
 
-export { ApiError, serverNow, setUnauthorizedHandler } from "./client";
+export { ApiError, isMockMode, serverNow, setUnauthorizedHandler } from "./client";
+export { mockLogin, mockMembers, resetMock } from "./mock/server";
 
 export type Me = ApiResponse<"/api/v1/me", "get">;
 export type Member = ApiResponse<"/api/v1/members", "get">[number];

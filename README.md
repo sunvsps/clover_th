@@ -14,6 +14,10 @@ Frontend for the Clover_TH Ragnarok: The New World guild auction queue.
 - Admins can preview the user view from the ADMIN badge and switch back
 - Responsive layout for desktop, tablet and phone; TH/EN toggle; hash deep links (`#calendar`, `#teams`, `#admin`)
 
+## Demo mode (no backend)
+
+Set `VITE_API_MODE=mock` (or in the browser `localStorage.setItem("clover.apiMode","mock")`) and the app runs against an in-browser mock of the API (`frontend/src/api/mock/`): same routes, payloads and error codes as the backend, state kept in localStorage. Sign in by picking a member (guild leadership are admins). This is what https://clover-th.vercel.app runs until the backend is hosted; nothing is shared between browsers.
+
 ## Run locally
 
 Backend (see `docs/deploy.md` for production):

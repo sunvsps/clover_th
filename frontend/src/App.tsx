@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Check, ChevronDown, CircleHelp, Crown, Hash, LogOut, Package, Settings, Users, X } from "lucide-react";
 import "./App.css";
 import "./features.css";
-import { auth, roster, setUnauthorizedHandler, type Me } from "./api";
+import { auth, isMockMode, mockLogin, mockMembers, resetMock, roster, setUnauthorizedHandler, type Me } from "./api";
+import { findJob, jobStyle } from "./data/guild";
 import type { GuildData } from "./lib/types";
 import { describeError } from "./api/errors";
 import AuctionView from "./views/AuctionView";
@@ -30,6 +31,9 @@ function App() {
   const [activeView, setActiveView] = useState<GuildView>(() => viewFromHash());
   const [data, setData] = useState<GuildData | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [demoLoginOpen, setDemoLoginOpen] = useState(false);
+  const [demoSearch, setDemoSearch] = useState("");
+  const mock = isMockMode();
 
   const isThai = language === "th";
   const me = session.status === "ready" ? session.me : null;
@@ -194,6 +198,10 @@ function App() {
                   <LogOut size={14} />
                 </button>
               </>
+            ) : mock ? (
+              <button className="top-login-button" type="button" onClick={() => setDemoLoginOpen(true)}>
+                <Hash size={15} /> {isThai ? "เข้าสู่ระบบ (ทดลอง)" : "Sign in (demo)"}
+              </button>
             ) : (
               <a className="top-login-button" href={auth.loginUrl}>
                 <Hash size={15} /> Sign in with Discord
@@ -219,6 +227,70 @@ function App() {
           </button>
         )}
       </nav>
+
+      {mock && (
+        <div className="feature-content slim">
+          <p className="demo-banner">
+            <strong>{isThai ? "โหมดทดลอง" : "Demo mode"}</strong>{" "}
+            {isThai ? "ข้อมูลทั้งหมดอยู่ในเบราว์เซอร์นี้ (ยังไม่เชื่อมฐานข้อมูล) รีเฟรชแล้วยังอยู่ แต่คนอื่นไม่เห็น" : "All data lives in this browser (no database connected yet). It survives refresh but nobody else sees it."}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                if (window.confirm(isThai ? "ล้างข้อมูลทดลองทั้งหมดและเริ่มใหม่?" : "Reset all demo data?")) {
+                  resetMock();
+                  window.location.reload();
+                }
+              }}
+            >
+              {isThai ? "ล้างข้อมูลทดลอง" : "Reset demo data"}
+            </button>
+          </p>
+        </div>
+      )}
+
+      {demoLoginOpen && mock && (
+        <div className="page-modal-backdrop" role="presentation" onClick={() => setDemoLoginOpen(false)}>
+          <section className="page-modal demo-login" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="page-modal-header">
+              <div>
+                <p className="eyebrow">{isThai ? "โหมดทดลอง" : "DEMO MODE"}</p>
+                <h2>{isThai ? "เข้าสู่ระบบเป็นใคร?" : "Sign in as…"}</h2>
+                <small className="event-dialog-status">{isThai ? "ของจริงจะใช้บัญชี Discord ที่ลงทะเบียนกับบอท — ตรงนี้เลือกสมาชิกเพื่อทดลองได้เลย (คนที่มี ADMIN คือหัวหน้ากิลด์)" : "The real app signs in with Discord; here just pick a member (ADMIN = guild leadership)."}</small>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setDemoLoginOpen(false)} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <label className="team-search pool-search">
+              <input type="search" autoFocus value={demoSearch} onChange={(event) => setDemoSearch(event.target.value)} placeholder={isThai ? "ค้นหาชื่อ..." : "Search..."} />
+            </label>
+            <ul className="demo-members">
+              {mockMembers()
+                .filter((member) => !demoSearch.trim() || member.ign.toLowerCase().includes(demoSearch.trim().toLowerCase()))
+                .sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin) || a.ign.localeCompare(b.ign))
+                .slice(0, 40)
+                .map((member) => (
+                  <li key={member.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        mockLogin(member.id);
+                        setDemoLoginOpen(false);
+                        setAuthError(null);
+                        void loadMe();
+                      }}
+                    >
+                      <i className="job-dot" style={jobStyle(data ? findJob(data.jobs, member.jobId) : undefined)} />
+                      {member.ign}
+                      {member.isAdmin && <em className="tag">ADMIN</em>}
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </section>
+        </div>
+      )}
 
       {authErrorText && (
         <div className="feature-content">
@@ -258,9 +330,15 @@ function App() {
               <h2>{isThai ? "เข้าสู่ระบบด้วย Discord เพื่อใช้งาน" : "Sign in with Discord to continue"}</h2>
               <p>{isThai ? "ใช้บัญชี Discord ที่ลงทะเบียนกับบอทกิลด์" : "Use the Discord account registered with the guild bot."}</p>
             </div>
-            <a className="discord-button" href={auth.loginUrl}>
-              <Hash size={15} /> Sign in with Discord
-            </a>
+            {mock ? (
+              <button className="discord-button" type="button" onClick={() => setDemoLoginOpen(true)}>
+                <Hash size={15} /> {isThai ? "เลือกสมาชิกเพื่อทดลอง" : "Pick a member to demo"}
+              </button>
+            ) : (
+              <a className="discord-button" href={auth.loginUrl}>
+                <Hash size={15} /> Sign in with Discord
+              </a>
+            )}
           </section>
         </div>
       )}

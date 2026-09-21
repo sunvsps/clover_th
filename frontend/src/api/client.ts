@@ -1,4 +1,14 @@
 import type { paths } from "./schema";
+import { mockRequest } from "./mock/server";
+
+/** Mock mode: in-browser fake backend (VITE_API_MODE=mock at build time, or localStorage "clover.apiMode" = "mock"). */
+export const isMockMode = () => {
+  try {
+    return import.meta.env.VITE_API_MODE === "mock" || localStorage.getItem("clover.apiMode") === "mock";
+  } catch {
+    return import.meta.env.VITE_API_MODE === "mock";
+  }
+};
 
 type Method = "get" | "post" | "put" | "patch" | "delete";
 type PathsFor<M extends Method> = { [P in keyof paths]: paths[P] extends Record<M, infer Op> ? (Op extends { responses: unknown } ? P : never) : never }[keyof paths];
@@ -59,6 +69,16 @@ export async function api<M extends Method, P extends PathsFor<M>>(method: M, pa
     });
     const qs = params.toString();
     if (qs) url += `?${qs}`;
+  }
+  if (isMockMode()) {
+    const result = await mockRequest(method, url, options.body);
+    noteServerTime(result.body);
+    if (result.status >= 400) {
+      const error = (result.body as { error?: { code?: string; message?: string; details?: Record<string, unknown> } }).error;
+      if (result.status === 401) onUnauthorized?.();
+      throw new ApiError(result.status, error?.code ?? "HTTP_ERROR", error?.message ?? "error", error?.details ?? {});
+    }
+    return result.body as ApiResponse<P, M>;
   }
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "get") headers["X-Requested-With"] = "fetch"; // CSRF check on cookie-authenticated writes
