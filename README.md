@@ -50,9 +50,12 @@ FRONTEND_URL=http://localhost:3000
 DISCORD_CLIENT_ID=dummy
 DISCORD_CLIENT_SECRET=dummy
 DISCORD_REDIRECT_URI=http://localhost:3000/api/v1/auth/discord/callback
+BOT_API_KEYS=0000000000000000000000000000000000000000000000000000000000000000
 ```
 
 `FRONTEND_URL` ต้องตรงกับที่เปิดในเบราว์เซอร์เป๊ะ (พอร์ต 3000) เพราะ backend ตรวจ `Origin` กับค่านี้ ส่วนค่า Discord ใส่หลอกไว้ได้ถ้ายังไม่ล็อกอินด้วย Discord จริง
+
+`BOT_API_KEYS` **ห้ามเว้นว่าง** ต้องเป็นค่า sha256 (ตัวอักษร hex 64 ตัว) 1 หรือ 2 ค่าคั่นด้วยจุลภาค ไม่งั้นเซิร์ฟเวอร์จะไม่ยอมสตาร์ท ถ้ายังไม่ต่อบอท ใช้ค่าศูนย์ 64 ตัวตามตัวอย่างข้างบนได้ (ไม่มี key ใดที่แปลงเป็นค่านี้ได้ จึงเท่ากับปิด endpoint ของบอท) เมื่อจะต่อบอทจริงให้สร้างค่าด้วย `npm run hash-bot-key -- --generate`
 
 **3. build หน้าเว็บ**
 
@@ -150,7 +153,7 @@ npm run build
 
 ## ถ้าติดปัญหา
 
-- **เซิร์ฟเวอร์ไม่ขึ้น (`npm run dev` ค้างเงียบๆ):** ดู error ใน terminal ส่วนมากเพราะไม่ได้โหลด env (`set -a; source .env; set +a`), `SESSION_SECRET` สั้นเกินไป หรือยังไม่ได้ `db:migrate`
+- **เซิร์ฟเวอร์ไม่ขึ้น (`npm run dev` ค้างเงียบๆ):** ดู error ใน terminal ส่วนมากเพราะไม่ได้โหลด env (`set -a; source .env; set +a`), `SESSION_SECRET` สั้นเกินไป, `BOT_API_KEYS` ว่างหรือไม่ใช่ค่า sha256 64 ตัวอักษร หรือยังไม่ได้ `db:migrate`
 - **ขึ้น `CSRF_REJECTED` ตอนบันทึกข้อมูล:** `FRONTEND_URL` ไม่ตรงกับ URL ที่เปิดในเบราว์เซอร์ แก้แล้วรีสตาร์ทเซิร์ฟเวอร์
 - **เห็นแต่ JSON ไม่เห็นหน้าเว็บ:** ยังไม่ได้ build frontend (`npm run build` ใน `frontend/`) แล้วรีสตาร์ท backend
 - **พอร์ต 55432 ชน:** ตั้ง `DB_PORT` เป็นพอร์ตอื่นสำหรับ docker compose และแก้ `DATABASE_URL` ให้ตรงกัน
