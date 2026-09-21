@@ -1,75 +1,45 @@
-# React + TypeScript + Vite
+# Clover_TH frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite. It talks to the Fastify backend in `../backend` through `/api/v1` (same origin: the Vite dev server proxies `/api` to `http://localhost:3000`, so the session cookie is first-party and there is no CORS).
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Commands
 
 ```
-
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+npm ci              # install
+npm run dev         # Vite dev server on http://localhost:5173
+npm run lint
+npm test            # Vitest + MSW (jsdom)
+npm run test:tz     # Bangkok date helpers under TZ=UTC, Asia/Bangkok and America/Los_Angeles
+npm run build       # tsc -b && vite build
+npm run api:types   # copy ../backend/openapi/schema.d.ts to src/api/schema.d.ts (run after the API changes)
+npm run api:types:check  # fails when the copy is out of date (CI)
 ```
+
+## Running the whole stack locally
+
+1. Database (throwaway Postgres 16 on host port 55432; set `DB_PORT` to use another):
+   `cd backend && docker compose up -d db`
+2. Backend env: `cp .env.example .env` in `backend/` and set `SESSION_SECRET` (`openssl rand -base64 48`). Keep `FRONTEND_URL=http://localhost:5173` (the CSRF check compares the browser `Origin` with it). Discord values are only needed for real login (below).
+3. Schema and demo data: `npm ci && npm run db:migrate` then `npm run db:seed -- --dev` (dev seed: an admin with Discord id `900000000000000000`, sample members, jobs and events).
+4. Backend: `npm run dev` (port 3000).
+5. Frontend: `cd frontend && npm ci && npm run dev`, open http://localhost:5173.
+
+## Signing in
+
+The Sign-in button goes to `/api/v1/auth/discord/login`. Two ways to get a session in development:
+
+- **Real Discord app.** Create an application in the Discord developer portal, add the redirect `http://localhost:5173/api/v1/auth/discord/callback`, and put `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` and `DISCORD_REDIRECT_URI` in `backend/.env`. Only members registered through the bot (and active) can sign in; anyone else lands on a clear "not registered" / "deactivated" screen.
+- **Dev login cookie (no Discord).** In `backend/` run `npm run dev-login -- 900000000000000000` (see `docs/postman.md`). It prints a session cookie for a seeded member; in the browser console on http://localhost:5173 run `document.cookie = "session=<value>; path=/"` and reload. The cookie is a live login: do not paste it into files, chat or logs.
+
+`?authError=` (set by the backend after a failed login) shows a separate screen for `AUTH_NOT_REGISTERED`, `AUTH_MEMBER_INACTIVE`, `AUTH_STATE_INVALID` and `AUTH_OAUTH_FAILED`. A 401 while using the app shows "session expired".
+
+## Code layout
+
+- `src/api/` is the only place that talks HTTP: `client.ts` (fetch with `credentials: 'include'`, `X-Requested-With` on writes, error envelope to `ApiError`), `errors.ts` (error code to TH/EN text), `enums.ts` (wire enums such as `JOINED` to UI names, only here), `serverClock.ts` and `usePolling.ts` (server clock offset from `serverTime` / `X-Server-Time`), `adapters.ts` and `endpoints.ts`. `schema.d.ts` is generated (do not edit; `npm run api:types`).
+- `src/lib/bangkok.ts`: date keys (`YYYY-MM-DD`) and week maths in Asia/Bangkok, identical in any browser time zone.
+- `src/data/guild.ts`: UI types and helpers only (no member or job data).
+- Members are keyed by `memberId` everywhere and shown by `ign`.
+
+## Still local mock state (replaced in WP12-WP15)
+
+The item auction board and its admin panel, weekly attendance, team assignments, and the roster / job edits (rename, job change, add or remove member, job manager) work on local state only: they start from the API data but are not saved.

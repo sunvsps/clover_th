@@ -1,31 +1,39 @@
 import { useState } from "react";
-import { defaultJobs, guildMembers, SUBTEAM_SIZE, type Attendance, type GuildMember, type Job } from "../data/guild";
+import { SUBTEAM_SIZE, type Attendance, type GuildMember, type Job } from "../data/guild";
 import type { AttendanceBook } from "../components/WeeklySchedule";
 import type { TeamAssignments } from "../components/TeamPlanner";
 
+let localId = 0; // ids of members added by the local (mock) roster editor
+
 type Options = {
-  isAuthenticated: boolean;
+  /** roster and jobs as loaded from the API; they seed the state (the edits below are still local mock state) */
+  initialMembers: GuildMember[];
+  initialJobs: Job[];
+  memberId: string;
   isAdmin: boolean;
-  userName: string;
   isThai: boolean;
   notify: (message: string) => void;
   /** keeps the admin selection in step with roster changes */
-  onMemberRenamed: (oldName: string, newName: string) => void;
-  onMemberRemoved: (name: string) => void;
+  onMemberRemoved: (memberId: string) => void;
 };
 
-/** Roster, jobs, weekly attendance and team assignments (local demo behaviour, unchanged by the WP11a extraction). */
+/**
+ * Roster, jobs, weekly attendance and team assignments, all keyed by memberId. The roster and jobs START from the API
+ * data; attendance, team assignments and the roster/job edits are still LOCAL mock state until WP12/WP13/WP15 replace
+ * them with API calls.
+ */
 export function useGuildState({
-  isAuthenticated,
+  initialMembers,
+  initialJobs,
+  memberId,
   isAdmin,
-  userName,
   isThai,
   notify,
-  onMemberRenamed,
   onMemberRemoved,
 }: Options) {
-  const [jobs, setJobs] = useState<Job[]>(defaultJobs);
-  const [members, setMembers] = useState<GuildMember[]>(guildMembers);
+  const [jobs, setJobs] = useState<Job[]>(initialJobs);
+  const [members, setMembers] = useState<GuildMember[]>(initialMembers);
+  const ignOf = (id: string) => members.find((member) => member.id === id)?.ign ?? id;
   const [attendance, setAttendance] = useState<AttendanceBook>({});
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignments>({});
 
@@ -57,18 +65,14 @@ export function useGuildState({
   }
 
   function updateAttendance(key: string, member: string, status: Attendance | null) {
-    if (!isAuthenticated) {
-      notify(isThai ? "กรุณาเข้าสู่ระบบด้วย Discord ก่อนลงทะเบียน" : "Sign in with Discord before registering.");
-      return;
-    }
-    if (member !== userName && !isAdmin) return;
+    if (member !== memberId && !isAdmin) return;
     setAttendance((book) => {
       const entry = { ...(book[key] ?? {}) };
       if (status) entry[member] = status;
       else delete entry[member];
       return { ...book, [key]: entry };
     });
-    const who = member === userName ? (isThai ? "คุณ" : "You") : member;
+    const who = member === memberId ? (isThai ? "คุณ" : "You") : ignOf(member);
     notify(
       status === "joined"
         ? isThai ? `${who} ลงทะเบียนเล่นแล้ว` : `${who} registered as playing.`
@@ -80,45 +84,34 @@ export function useGuildState({
 
   function addMember(name: string, job: number) {
     if (!isAdmin || !name) return false;
-    if (members.some((member) => member.name.toLowerCase() === name.toLowerCase())) {
+    if (members.some((member) => member.ign.toLowerCase() === name.toLowerCase())) {
       notify(isThai ? `มีชื่อ ${name} อยู่แล้ว` : `${name} is already on the roster.`);
       return false;
     }
-    setMembers((current) => [...current, { name, job, custom: true }]);
+    localId += 1;
+    setMembers((current) => [...current, { id: `local-${localId}`, ign: name, job, custom: true }]);
     notify(isThai ? `เพิ่ม ${name} เข้ากิลด์แล้ว` : `${name} added to the roster.`);
     return true;
   }
 
-  function renameMember(oldName: string, newName: string) {
-    if (!isAdmin || !newName) return false;
-    if (members.some((member) => member.name.toLowerCase() === newName.toLowerCase() && member.name !== oldName)) {
-      notify(isThai ? `มีชื่อ ${newName} อยู่แล้ว` : `${newName} is already on the roster.`);
+  function renameMember(id: string, newIgn: string) {
+    if (!isAdmin || !newIgn) return false;
+    const oldIgn = ignOf(id);
+    if (members.some((member) => member.ign.toLowerCase() === newIgn.toLowerCase() && member.id !== id)) {
+      notify(isThai ? `มีชื่อ ${newIgn} อยู่แล้ว` : `${newIgn} is already on the roster.`);
       return false;
     }
-    setMembers((current) => current.map((member) => (member.name === oldName ? { ...member, name: newName } : member)));
-    setTeamAssignments((current) => {
-      if (!(oldName in current)) return current;
-      const { [oldName]: slot, ...rest } = current;
-      return { ...rest, [newName]: slot };
-    });
-    setAttendance((book) =>
-      Object.fromEntries(
-        Object.entries(book).map(([key, entry]) => {
-          if (!(oldName in entry)) return [key, entry];
-          const { [oldName]: status, ...rest } = entry;
-          return [key, { ...rest, [newName]: status }];
-        }),
-      ),
-    );
-    onMemberRenamed(oldName, newName);
-    notify(isThai ? `เปลี่ยนชื่อ ${oldName} เป็น ${newName} แล้ว` : `${oldName} renamed to ${newName}.`);
+    // ids never change, so assignments and attendance need no re-keying
+    setMembers((current) => current.map((member) => (member.id === id ? { ...member, ign: newIgn } : member)));
+    notify(isThai ? `เปลี่ยนชื่อ ${oldIgn} เป็น ${newIgn} แล้ว` : `${oldIgn} renamed to ${newIgn}.`);
     return true;
   }
 
-  function setMemberJob(name: string, job: number) {
+  function setMemberJob(id: string, job: number) {
     if (!isAdmin) return;
-    setMembers((current) => current.map((member) => (member.name === name ? { ...member, job } : member)));
+    setMembers((current) => current.map((member) => (member.id === id ? { ...member, job } : member)));
     const label = jobs.find((entry) => entry.id === job)?.label ?? job;
+    const name = ignOf(id);
     notify(isThai ? `เปลี่ยนอาชีพของ ${name} เป็น ${label} แล้ว` : `${name} is now ${label}.`);
   }
 
@@ -135,11 +128,12 @@ export function useGuildState({
     return true;
   }
 
-  function removeMember(name: string) {
+  function removeMember(id: string) {
     if (!isAdmin) return;
-    setMembers((current) => current.filter((member) => member.name !== name));
-    removeMemberFromTeam(name);
-    onMemberRemoved(name);
+    const name = ignOf(id);
+    setMembers((current) => current.filter((member) => member.id !== id));
+    removeMemberFromTeam(id);
+    onMemberRemoved(id);
     notify(isThai ? `ลบ ${name} ออกจากรายชื่อแล้ว` : `${name} removed from the roster.`);
   }
 

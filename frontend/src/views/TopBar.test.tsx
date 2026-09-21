@@ -1,62 +1,74 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderHook, act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useSession } from "../hooks/useSession";
+import type { Session } from "../hooks/useSession";
 import TopBar from "./TopBar";
 
-function setup(isThai = false) {
-  const notify = vi.fn();
+function fakeSession(over: Partial<Session> = {}): Session {
+  return {
+    state: { status: "signedOut" },
+    isAuthenticated: false,
+    memberId: "",
+    userName: "",
+    ign: "",
+    isAdmin: false,
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+    switchToUser: vi.fn(),
+    retry: vi.fn(),
+    dismissAuthError: vi.fn(),
+    ...over,
+  } as Session;
+}
+
+const signedIn = (over: Partial<Session> = {}) =>
+  fakeSession({ isAuthenticated: true, memberId: "m-aria", userName: "Aria", ign: "Aria", ...over });
+
+function setup(session: Session, isThai = false) {
   const onSwitchToUser = vi.fn();
   const onToggleLanguage = vi.fn();
-  const hook = renderHook(() => useSession({ notify }));
-  const ui = () => (
-    <TopBar session={hook.result.current} isThai={isThai} onToggleLanguage={onToggleLanguage} onSwitchToUser={onSwitchToUser} />
-  );
-  const view = render(ui());
-  const rerender = () => view.rerender(ui());
-  return { hook, notify, onSwitchToUser, onToggleLanguage, rerender };
+  render(<TopBar session={session} isThai={isThai} onToggleLanguage={onToggleLanguage} onSwitchToUser={onSwitchToUser} />);
+  return { onSwitchToUser, onToggleLanguage };
 }
 
 describe("TopBar (auth/session shell)", () => {
-  it("shows the brand and a Discord sign-in button while signed out", () => {
-    setup();
+  it("shows the brand and a Discord sign-in button while signed out; the button starts the Discord login", async () => {
+    const session = fakeSession();
+    setup(session);
     expect(screen.getByLabelText("Clover TH home")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Sign in with Discord/ })).toBeInTheDocument();
     expect(screen.queryByText("ADMIN")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: /Sign in with Discord/ }));
+    expect(session.signIn).toHaveBeenCalledTimes(1);
   });
 
-  it("signing in shows the user name with the ADMIN badge; signing out returns to the sign-in button", async () => {
-    const user = userEvent.setup();
-    const t = setup();
-    await user.click(screen.getByRole("button", { name: /Sign in with Discord/ }));
-    t.rerender();
-    expect(screen.getByText("Mew")).toBeInTheDocument();
+  it("shows the member from /me with the ADMIN badge; the sign-out button signs out", async () => {
+    const session = signedIn({ isAdmin: true });
+    setup(session);
+    expect(screen.getByText("Aria")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /ADMIN/ })).toBeInTheDocument();
-    await user.click(screen.getByTitle("Sign out"));
-    t.rerender();
-    expect(screen.getByRole("button", { name: /Sign in with Discord/ })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByTitle("Sign out"));
+    expect(session.signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("the role menu switches an admin to the USER view and reports it", async () => {
+  it("a non-admin gets the USER badge and no role menu", () => {
+    setup(signedIn());
+    expect(screen.getByText("USER")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /ADMIN/ })).not.toBeInTheDocument();
+  });
+
+  it("the role menu asks to switch an admin to the USER view and closes", async () => {
     const user = userEvent.setup();
-    const t = setup();
-    await user.click(screen.getByRole("button", { name: /Sign in with Discord/ }));
-    t.rerender();
+    const t = setup(signedIn({ isAdmin: true }));
     await user.click(screen.getByRole("button", { name: /ADMIN/ }));
     expect(screen.getByText("Current role")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Switch to USER view" }));
     expect(t.onSwitchToUser).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("Current role")).not.toBeInTheDocument(); // the menu closed
-    act(() => t.hook.result.current.switchToUser());
-    t.rerender();
-    expect(screen.getByText("USER")).toBeInTheDocument();
-    expect(t.notify).toHaveBeenCalledWith("Switched to User view.");
+    expect(screen.queryByText("Current role")).not.toBeInTheDocument();
   });
 
   it("the language button shows the other language and calls back", async () => {
     const user = userEvent.setup();
-    const t = setup(true);
+    const t = setup(fakeSession(), true);
     await user.click(screen.getByTitle("Switch language"));
     expect(screen.getByTitle("Switch language")).toHaveTextContent("EN");
     expect(t.onToggleLanguage).toHaveBeenCalledTimes(1);

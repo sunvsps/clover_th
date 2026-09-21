@@ -1,38 +1,41 @@
+import { useState } from "react";
 import { useAdminControls } from "../hooks/useAdminControls";
 import { useAuction } from "../hooks/useAuction";
 import { useGuildState } from "../hooks/useGuildState";
-import { useSession } from "../hooks/useSession";
+import { testJobs, testMembers } from "./api";
 import AuctionOverlays from "../views/AuctionOverlays";
 import AuctionView from "../views/AuctionView";
 
-/** Test harness: the auction page wired to the real hooks (no top bar / feature views), with a sign-in button. */
+/** Test harness: the auction page wired to the real hooks with a fixed admin member (Aria) and a sign-in toggle. */
 export default function LiveAuction({ notify = () => {} }: { notify?: (message: string) => void }) {
-  const session = useSession({ notify });
-  const auction = useAuction({ isAuthenticated: session.isAuthenticated, ign: session.ign, notify });
+  const [signedIn, setSignedIn] = useState(false);
+  const [asAdmin, setAsAdmin] = useState(true);
+  const ign = signedIn ? "Aria" : "";
+  const auction = useAuction({ isAuthenticated: signedIn, ign, notify });
   const admin = useAdminControls({ lockedPages: auction.lockedPages, setLockedPages: auction.setLockedPages, notify });
   const guild = useGuildState({
-    isAuthenticated: session.isAuthenticated,
-    isAdmin: session.isAdmin,
-    userName: session.userName,
+    initialMembers: testMembers,
+    initialJobs: testJobs,
+    memberId: signedIn ? "m-aria" : "",
+    isAdmin: signedIn && asAdmin,
     isThai: false,
     notify,
-    onMemberRenamed: admin.renameAdminMember,
     onMemberRemoved: admin.dropAdminMember,
   });
   return (
     <>
-      <button type="button" onClick={session.signIn}>
+      <button type="button" onClick={() => setSignedIn(true)}>
         test-sign-in
       </button>
-      <button type="button" onClick={session.switchToUser}>
+      <button type="button" onClick={() => setAsAdmin(false)}>
         test-switch-user
       </button>
       <AuctionView
         visible
         isThai={false}
-        isAuthenticated={session.isAuthenticated}
-        isAdmin={session.isAdmin}
-        ign={session.ign}
+        isAuthenticated={signedIn}
+        isAdmin={signedIn && asAdmin}
+        ign={ign}
         members={guild.members}
         auction={auction}
         admin={admin}

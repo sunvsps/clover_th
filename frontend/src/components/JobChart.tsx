@@ -13,7 +13,7 @@ export default function JobChart({ jobs, members, assignments, isThai }: Props) 
   const [hovered, setHovered] = useState<number | null>(null);
   const rows = jobs.map((job) => {
     const ofJob = members.filter((member) => member.job === job.id);
-    const inTeam = ofJob.filter((member) => assignments[member.name]).length;
+    const inTeam = ofJob.filter((member) => assignments[member.id]).length;
     return { job, total: ofJob.length, inTeam, free: ofJob.length - inTeam };
   });
   const max = Math.max(1, ...rows.map((row) => row.total));

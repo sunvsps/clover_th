@@ -4,9 +4,9 @@ import { server } from "./server";
 
 describe("MSW test server", () => {
   it("answers requests a test mocks", async () => {
-    server.use(http.get("http://api.test/api/v1/me", () => HttpResponse.json({ ign: "Mew" })));
+    server.use(http.get("http://api.test/api/v1/me", () => HttpResponse.json({ ign: "Aria" })));
     const res = await fetch("http://api.test/api/v1/me");
-    expect(await res.json()).toEqual({ ign: "Mew" });
+    expect(await res.json()).toEqual({ ign: "Aria" });
   });
 
   it("fails loudly on a request nobody mocked", async () => {

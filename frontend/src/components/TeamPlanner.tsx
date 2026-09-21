@@ -5,7 +5,7 @@ import JobChartCard from "./JobChartCard";
 import JobManagerDialog from "./JobManagerDialog";
 import { useJobManager } from "../hooks/useJobManager";
 
-export type TeamAssignments = Record<string, string>; // member name -> "A-3"
+export type TeamAssignments = Record<string, string>; // memberId -> "A-3"
 
 type Props = {
   isThai: boolean;
@@ -13,13 +13,13 @@ type Props = {
   jobs: Job[];
   members: GuildMember[];
   assignments: TeamAssignments;
-  onAssign: (member: string, slot: string) => void;
-  onRemove: (member: string) => void;
+  onAssign: (memberId: string, slot: string) => void;
+  onRemove: (memberId: string) => void;
   onClear: () => void;
-  onAddMember: (name: string, job: number) => boolean;
-  onRenameMember: (oldName: string, newName: string) => boolean;
-  onSetMemberJob: (name: string, job: number) => void;
-  onRemoveMember: (name: string) => void;
+  onAddMember: (ign: string, job: number) => boolean;
+  onRenameMember: (memberId: string, newIgn: string) => boolean;
+  onSetMemberJob: (memberId: string, job: number) => void;
+  onRemoveMember: (memberId: string) => void;
   onSaveJobs: (next: Job[]) => boolean;
   onNotice: (message: string) => void;
 };
@@ -47,18 +47,19 @@ export default function TeamPlanner({
   const [hoverSlot, setHoverSlot] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newJob, setNewJob] = useState(jobs[0]?.id ?? 1);
-  const [editing, setEditing] = useState<{ name: string; value: string; job: number } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; ign: string; value: string; job: number } | null>(null);
   const jobManager = useJobManager(jobs, onSaveJobs);
   const [slotSearch, setSlotSearch] = useState<{ slot: string; query: string } | null>(null);
 
   const canEdit = isAdmin;
-  const byName = new Map(members.map((member) => [member.name, member]));
+  const byId = new Map(members.map((member) => [member.id, member]));
+  const ignOf = (id: string) => byId.get(id)?.ign ?? id;
   const jobOf = (member: GuildMember) => findJob(jobs, member.job);
   const jobLabel = (member: GuildMember) => jobOf(member)?.label ?? "—";
   const query = search.trim().toLowerCase();
-  const unassigned = [...members.filter((member) => !assignments[member.name])].sort((a, b) => a.job - b.job);
-  const visiblePool = unassigned.filter((member) => member.name.toLowerCase().includes(query));
-  const membersIn = (slot: string) => members.filter((member) => assignments[member.name] === slot);
+  const unassigned = [...members.filter((member) => !assignments[member.id])].sort((a, b) => a.job - b.job);
+  const visiblePool = unassigned.filter((member) => member.ign.toLowerCase().includes(query));
+  const membersIn = (slot: string) => members.filter((member) => assignments[member.id] === slot);
   const assignedCount = Object.keys(assignments).length;
 
   function place(member: string, slot: string) {
@@ -106,15 +107,15 @@ export default function TeamPlanner({
 
   function saveMemberEdit() {
     if (!editing) return;
-    const member = byName.get(editing.name);
+    const member = byId.get(editing.id);
     const next = editing.value.trim();
-    if (member && editing.job !== member.job) onSetMemberJob(editing.name, editing.job);
-    if (next && next !== editing.name && !onRenameMember(editing.name, next)) return;
+    if (member && editing.job !== member.job) onSetMemberJob(editing.id, editing.job);
+    if (next && next !== editing.ign && !onRenameMember(editing.id, next)) return;
     setEditing(null);
   }
 
   const slotMatches = (query: string) =>
-    query.trim() ? unassigned.filter((member) => member.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6) : [];
+    query.trim() ? unassigned.filter((member) => member.ign.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6) : [];
 
   function copyPlan() {
     const lines = [`Clover_TH Team Plan`, ""];
@@ -122,7 +123,7 @@ export default function TeamPlanner({
       lines.push(`Team ${team}`);
       for (let index = 1; index <= SUBTEAMS_PER_TEAM; index += 1) {
         const list = membersIn(`${team}-${index}`);
-        lines.push(`  ${team}${index}: ${list.map((member) => `${member.name} (${jobLabel(member)})`).join(", ") || "-"}`);
+        lines.push(`  ${team}${index}: ${list.map((member) => `${member.ign} (${jobLabel(member)})`).join(", ") || "-"}`);
       }
       lines.push("");
     });
@@ -132,27 +133,27 @@ export default function TeamPlanner({
 
   const chip = (member: GuildMember, inSlot: boolean) => (
     <div
-      className={`member-chip ${picked === member.name ? "picked" : ""} ${canEdit ? "editable" : ""}`}
+      className={`member-chip ${picked === member.id ? "picked" : ""} ${canEdit ? "editable" : ""}`}
       style={jobStyle(jobOf(member))}
       draggable={canEdit}
-      key={member.name}
-      onDragStart={(event) => startDrag(event, member.name)}
+      key={member.id}
+      onDragStart={(event) => startDrag(event, member.id)}
       onClick={(event) => {
         event.stopPropagation();
-        tapChip(member.name);
+        tapChip(member.id);
       }}
       role={canEdit ? "button" : undefined}
       tabIndex={canEdit ? 0 : undefined}
       onKeyDown={(event) => {
         if (canEdit && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
-          tapChip(member.name);
+          tapChip(member.id);
         }
       }}
-      title={`${member.name} · ${jobLabel(member)}`}
+      title={`${member.ign} · ${jobLabel(member)}`}
     >
       {canEdit && <GripVertical size={12} className="grip" />}
-      <span className="chip-name">{member.name}</span>
+      <span className="chip-name">{member.ign}</span>
       {canEdit && (
         <span className="chip-tools">
           <button
@@ -163,7 +164,7 @@ export default function TeamPlanner({
             onClick={(event) => {
               event.stopPropagation();
               setPicked(null);
-              setEditing({ name: member.name, value: member.name, job: member.job });
+              setEditing({ id: member.id, ign: member.ign, value: member.ign, job: member.job });
             }}
           >
             <Pencil size={10} />
@@ -176,7 +177,7 @@ export default function TeamPlanner({
               title={isThai ? "นำออกจากทีม" : "Remove from team"}
               onClick={(event) => {
                 event.stopPropagation();
-                onRemove(member.name);
+                onRemove(member.id);
               }}
             >
               <X size={11} />
@@ -219,7 +220,7 @@ export default function TeamPlanner({
           {Array.from({ length: SUBTEAM_SIZE }, (_, slotIndex) => {
             const member = list[slotIndex];
             return member ? (
-              <div className="subteam-slot" key={member.name}>
+              <div className="subteam-slot" key={member.id}>
                 {chip(member, true)}
               </div>
             ) : canEdit && slotIndex === list.length ? (
@@ -237,7 +238,7 @@ export default function TeamPlanner({
                       const first = slotMatches(slotSearch?.slot === slot ? slotSearch.query : "")[0];
                       if (first) {
                         event.preventDefault();
-                        place(first.name, slot);
+                        place(first.id, slot);
                         setSlotSearch(null);
                       }
                     }
@@ -248,16 +249,16 @@ export default function TeamPlanner({
                 {slotSearch?.slot === slot && slotMatches(slotSearch.query).length > 0 && (
                   <ul className="admin-entry-matches slot-matches">
                     {slotMatches(slotSearch.query).map((member) => (
-                      <li key={member.name}>
+                      <li key={member.id}>
                         <button
                           type="button"
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => {
-                            place(member.name, slot);
+                            place(member.id, slot);
                             setSlotSearch(null);
                           }}
                         >
-                          <i className="job-dot" style={jobStyle(jobOf(member))} /> {member.name}
+                          <i className="job-dot" style={jobStyle(jobOf(member))} /> {member.ign}
                           <small>{jobLabel(member)}</small>
                         </button>
                       </li>
@@ -373,10 +374,10 @@ export default function TeamPlanner({
 
       {picked && (
         <div className="picked-banner">
-          <span className="job-dot" style={jobStyle(findJob(jobs, byName.get(picked)?.job ?? 0))} />
+          <span className="job-dot" style={jobStyle(findJob(jobs, byId.get(picked)?.job ?? 0))} />
           {isThai
-            ? `เลือก ${picked} แล้ว แตะทีมย่อยที่ต้องการวาง${assignments[picked] ? " หรือแตะช่องสมาชิกเพื่อนำออกจากทีม" : ""}`
-            : `${picked} selected. Tap a subteam to place${assignments[picked] ? ", or tap the member pool to unassign" : ""}.`}
+            ? `เลือก ${ignOf(picked)} แล้ว แตะทีมย่อยที่ต้องการวาง${assignments[picked] ? " หรือแตะช่องสมาชิกเพื่อนำออกจากทีม" : ""}`
+            : `${ignOf(picked)} selected. Tap a subteam to place${assignments[picked] ? ", or tap the member pool to unassign" : ""}.`}
           <button type="button" onClick={() => setPicked(null)}>
             {isThai ? "ยกเลิก" : "Cancel"}
           </button>
@@ -423,7 +424,7 @@ export default function TeamPlanner({
 
         <div className="team-columns">
           {teamNames.map((team) => {
-            const total = members.filter((member) => assignments[member.name]?.startsWith(`${team}-`)).length;
+            const total = members.filter((member) => assignments[member.id]?.startsWith(`${team}-`)).length;
             return (
               <div className={`team-column team-${team.toLowerCase()}`} key={team}>
                 <h3>
@@ -447,7 +448,7 @@ export default function TeamPlanner({
                 <p className="eyebrow">
                   <Pencil size={11} /> {isThai ? "แก้ไขสมาชิก" : "EDIT MEMBER"}
                 </p>
-                <h2 id="member-editor-title">{editing.name}</h2>
+                <h2 id="member-editor-title">{editing.ign}</h2>
               </div>
               <button type="button" className="modal-close" onClick={() => setEditing(null)} aria-label="Close">
                 ×
@@ -484,17 +485,17 @@ export default function TeamPlanner({
               </div>
               <div className="add-member-preview">
                 <span className="member-chip preview" style={jobStyle(findJob(jobs, editing.job))}>
-                  <span className="chip-name">{editing.value.trim() || editing.name}</span>
+                  <span className="chip-name">{editing.value.trim() || editing.ign}</span>
                 </span>
                 <em>{findJob(jobs, editing.job)?.label}</em>
               </div>
               <div className="editor-actions">
-                {byName.get(editing.name)?.custom && (
+                {byId.get(editing.id)?.custom && (
                   <button
                     type="button"
                     className="copy-button danger"
                     onClick={() => {
-                      onRemoveMember(editing.name);
+                      onRemoveMember(editing.id);
                       setEditing(null);
                     }}
                   >

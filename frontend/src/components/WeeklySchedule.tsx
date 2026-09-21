@@ -1,13 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, Copy, Hammer, RotateCcw, Shield, Users, X } from "lucide-react";
+import { addDays, formatDay, startOfWeek, todayKey, yearOf } from "../lib/bangkok";
 import {
-  addDays,
   attendanceKey,
-  formatDay,
-  scheduleEvents,
-  startOfWeek,
-  timeSlots,
-  toDateKey,
+  timeSlotsOf,
   weekDayNames,
   weekDayShort,
   findJob,
@@ -18,16 +14,19 @@ import {
   type ScheduleEvent,
 } from "../data/guild";
 
+/** attendanceKey("YYYY-MM-DD", eventId) -> memberId -> status */
 export type AttendanceBook = Record<string, Record<string, Attendance>>;
 
 type Props = {
   isThai: boolean;
-  userName: string;
+  /** the signed-in member; attendance is keyed by memberId */
+  memberId: string;
   isAdmin: boolean;
+  events: ScheduleEvent[];
   jobs: Job[];
   members: GuildMember[];
   attendance: AttendanceBook;
-  onSetAttendance: (key: string, member: string, status: Attendance | null) => void;
+  onSetAttendance: (key: string, memberId: string, status: Attendance | null) => void;
   onNotice: (message: string) => void;
 };
 
@@ -39,31 +38,35 @@ function statusLabel(status: Attendance | undefined, isThai: boolean) {
   return isThai ? "ยังไม่เลือก" : "Not set";
 }
 
-export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, members, attendance, onSetAttendance, onNotice }: Props) {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+export default function WeeklySchedule({ isThai, memberId, isAdmin, events, jobs, members, attendance, onSetAttendance, onNotice }: Props) {
+  // Days are Bangkok calendar date keys ("YYYY-MM-DD"), never browser-local Dates.
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(todayKey()));
   const [selected, setSelected] = useState<Selection | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
   const [adminTarget, setAdminTarget] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const todayKey = toDateKey(new Date());
+  const today = todayKey();
+  const timeSlots = useMemo(() => timeSlotsOf(events), [events]);
+  const byId = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const ignOf = (id: string) => byId.get(id)?.ign ?? id;
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
-  const dayKeys = days.map(toDateKey);
+  const dayKeys = days;
   const dayNames = isThai ? weekDayNames.th : weekDayNames.en;
   const shortNames = isThai ? weekDayShort.th : weekDayShort.en;
   const weekEnd = addDays(weekStart, 6);
-  const weekLabel = `${formatDay(weekStart, isThai)} – ${formatDay(weekEnd, isThai)} ${weekEnd.getFullYear()}`;
-  const isCurrentWeek = dayKeys.includes(todayKey);
+  const weekLabel = `${formatDay(weekStart, isThai)} – ${formatDay(weekEnd, isThai)} ${yearOf(weekEnd)}`;
+  const isCurrentWeek = dayKeys.includes(today);
 
   const book = (dateKey: string, eventId: string) => attendance[attendanceKey(dateKey, eventId)] ?? {};
-  const myStatus = (dateKey: string, eventId: string) => book(dateKey, eventId)[userName];
+  const myStatus = (dateKey: string, eventId: string) => book(dateKey, eventId)[memberId];
   const roster = (dateKey: string, eventId: string, status: Attendance) =>
     Object.entries(book(dateKey, eventId))
       .filter(([, value]) => value === status)
       .map(([member]) => member);
-  const eventsAt = (slot: string, day: number) => scheduleEvents.filter((event) => event.slot === slot && event.day === day);
+  const eventsAt = (slot: string, day: number) => events.filter((event) => event.slot === slot && event.day === day);
   const eventsOn = (day: number) =>
-    [...scheduleEvents.filter((event) => event.day === day)].sort((a, b) => a.start.localeCompare(b.start));
+    [...events.filter((event) => event.day === day)].sort((a, b) => a.start.localeCompare(b.start));
 
   const weekEntries = dayKeys.flatMap((dateKey, day) =>
     eventsOn(day).map((event) => ({ dateKey, event, joined: roster(dateKey, event.id, "joined"), leave: roster(dateKey, event.id, "leave") })),
@@ -82,16 +85,16 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
   }, [weekStart]);
 
   const adminMatches = adminSearch.trim()
-    ? members.filter((member) => member.name.toLowerCase().includes(adminSearch.trim().toLowerCase())).slice(0, 8)
+    ? members.filter((member) => member.ign.toLowerCase().includes(adminSearch.trim().toLowerCase())).slice(0, 8)
     : [];
 
   function chooseMine(status: Attendance | null) {
     if (!selected) return;
-    onSetAttendance(attendanceKey(selected.dateKey, selected.event.id), userName, status);
+    onSetAttendance(attendanceKey(selected.dateKey, selected.event.id), memberId, status);
     setSelected(null);
   }
 
-  function chooseFor(member: string, status: Attendance | null) {
+  function chooseFor(member: string, status: Attendance | null) { // member = memberId
     if (!selected) return;
     onSetAttendance(attendanceKey(selected.dateKey, selected.event.id), member, status);
   }
@@ -110,8 +113,8 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
       lines.push(`${dayNames[day]} ${formatDay(days[day], isThai)}`);
       entries.forEach(({ event, joined, leave }) => {
         lines.push(`  ${event.name} (${event.start}-${event.end})`);
-        if (joined.length) lines.push(`    ${isThai ? "ลงเล่น" : "Playing"}: ${joined.join(", ")}`);
-        if (leave.length) lines.push(`    ${isThai ? "ลา" : "Leave"}: ${leave.join(", ")}`);
+        if (joined.length) lines.push(`    ${isThai ? "ลงเล่น" : "Playing"}: ${joined.map(ignOf).join(", ")}`);
+        if (leave.length) lines.push(`    ${isThai ? "ลา" : "Leave"}: ${leave.map(ignOf).join(", ")}`);
       });
       lines.push("");
     });
@@ -157,7 +160,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
         <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week">
           <ArrowRight size={15} />
         </button>
-        <button type="button" className="today-button" disabled={isCurrentWeek} onClick={() => setWeekStart(startOfWeek(new Date()))}>
+        <button type="button" className="today-button" disabled={isCurrentWeek} onClick={() => setWeekStart(startOfWeek(today))}>
           {isThai ? "วันนี้" : "Today"}
         </button>
       </div>
@@ -167,7 +170,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
           <span className="schedule-corner" />
           {days.map((date, index) => (
             <span
-              className={`schedule-day ${index >= 5 ? "weekend" : ""} ${dayKeys[index] === todayKey ? "today" : ""}`}
+              className={`schedule-day ${index >= 5 ? "weekend" : ""} ${dayKeys[index] === today ? "today" : ""}`}
               key={dayKeys[index]}
               role="columnheader"
             >
@@ -179,7 +182,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
             <div className="schedule-row" role="row" key={slot}>
               <span className="schedule-time">{slot}</span>
               {dayKeys.map((dateKey, day) => (
-                <div className={`schedule-cell ${dateKey === todayKey ? "today" : ""} ${dateKey < todayKey ? "past" : ""}`} role="gridcell" key={`${slot}-${dateKey}`}>
+                <div className={`schedule-cell ${dateKey === today ? "today" : ""} ${dateKey < today ? "past" : ""}`} role="gridcell" key={`${slot}-${dateKey}`}>
                   {eventsAt(slot, day).map((event) => {
                     const status = myStatus(dateKey, event.id);
                     const joinedCount = roster(dateKey, event.id, "joined").length;
@@ -261,11 +264,11 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
             if (entries.length === 0) return null;
             const hasAny = entries.some((entry) => entry.joined.length || entry.leave.length);
             return (
-              <article className={`day-card ${dateKey === todayKey ? "today" : ""}`} key={dateKey}>
+              <article className={`day-card ${dateKey === today ? "today" : ""}`} key={dateKey}>
                 <header>
                   <span className="day-card-dow">{shortNames[day]}</span>
                   <strong>{formatDay(days[day], isThai)}</strong>
-                  {dateKey === todayKey && <em>{isThai ? "วันนี้" : "Today"}</em>}
+                  {dateKey === today && <em>{isThai ? "วันนี้" : "Today"}</em>}
                 </header>
                 {!hasAny && <p className="empty-search">{isThai ? "ยังไม่มีใครลงทะเบียน" : "No registrations yet."}</p>}
                 {entries.map(({ event, joined, leave }) => (
@@ -281,12 +284,12 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                       <div className="day-event-people">
                         {joined.map((member) => (
                           <span className="person joined" key={`j-${member}`}>
-                            <Check size={10} /> {member}
+                            <Check size={10} /> {ignOf(member)}
                           </span>
                         ))}
                         {leave.map((member) => (
                           <span className="person leave" key={`l-${member}`}>
-                            <X size={10} /> {member}
+                            <X size={10} /> {ignOf(member)}
                           </span>
                         ))}
                       </div>
@@ -346,7 +349,7 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                   <div className="admin-entry-search">
                     <input
                       type="search"
-                      value={adminTarget ?? adminSearch}
+                      value={adminTarget ? ignOf(adminTarget) : adminSearch}
                       placeholder={isThai ? "พิมพ์ชื่อสมาชิก..." : "Type a member name..."}
                       onChange={(event) => {
                         setAdminTarget(null);
@@ -356,9 +359,9 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                     {!adminTarget && adminMatches.length > 0 && (
                       <ul className="admin-entry-matches">
                         {adminMatches.map((member) => (
-                          <li key={member.name}>
-                            <button type="button" onClick={() => setAdminTarget(member.name)}>
-                              <i className="job-dot" style={jobStyle(findJob(jobs, member.job))} /> {member.name}
+                          <li key={member.id}>
+                            <button type="button" onClick={() => setAdminTarget(member.id)}>
+                              <i className="job-dot" style={jobStyle(findJob(jobs, member.job))} /> {member.ign}
                             </button>
                           </li>
                         ))}
@@ -389,8 +392,8 @@ export default function WeeklySchedule({ isThai, userName, isAdmin, jobs, member
                       <div className="roster-people">
                         {people.map((member) => (
                           <span className={`person ${status}`} key={member}>
-                            {member}
-                            {(isAdmin || member === userName) && (
+                            {ignOf(member)}
+                            {(isAdmin || member === memberId) && (
                               <button type="button" onClick={() => chooseFor(member, null)} aria-label={isThai ? "ล้าง" : "Clear"}>
                                 <X size={10} />
                               </button>

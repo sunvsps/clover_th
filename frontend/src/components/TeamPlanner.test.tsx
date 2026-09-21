@@ -2,13 +2,14 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import App from "../App";
+import { meAdmin, meUser, mockApi } from "../test/api";
 
 const chartCard = () => document.querySelector(".chart-card") as HTMLElement;
 
 async function openPlanner(user: ReturnType<typeof userEvent.setup>) {
+  mockApi({ me: meAdmin });
   render(<App />);
-  await user.click(screen.getByRole("button", { name: /Sign in with Discord/ }));
-  await user.click(screen.getByRole("button", { name: /Team planner/ }));
+  await user.click(await screen.findByRole("button", { name: /Team planner/ }));
 }
 
 describe("TeamPlanner: chart card and job manager", () => {
@@ -25,8 +26,9 @@ describe("TeamPlanner: chart card and job manager", () => {
 
   it("a non-admin sees the chart but neither the edit link nor the manager", async () => {
     const user = userEvent.setup();
+    mockApi({ me: meUser });
     render(<App />);
-    await user.click(screen.getByRole("button", { name: /Team planner/ }));
+    await user.click(await screen.findByRole("button", { name: /Team planner/ }));
     expect(chartCard()).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Edit jobs/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Manage jobs/ })).not.toBeInTheDocument();

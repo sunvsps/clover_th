@@ -1,7 +1,7 @@
 import { renderHook, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { guildMembers } from "../data/guild";
+import { testMembers as guildMembers } from "../test/api";
 import { useAdminControls } from "../hooks/useAdminControls";
 import { useAuction } from "../hooks/useAuction";
 import AuctionView from "./AuctionView";
@@ -9,7 +9,7 @@ import AuctionView from "./AuctionView";
 function harness(opts: { isAuthenticated?: boolean; isAdmin?: boolean; visible?: boolean; isThai?: boolean } = {}) {
   const notify = vi.fn();
   const state = renderHook(() => {
-    const auction = useAuction({ isAuthenticated: opts.isAuthenticated ?? false, ign: "Mew", notify });
+    const auction = useAuction({ isAuthenticated: opts.isAuthenticated ?? false, ign: "Aria", notify });
     const admin = useAdminControls({ lockedPages: auction.lockedPages, setLockedPages: auction.setLockedPages, notify });
     return { auction, admin };
   });
@@ -19,7 +19,7 @@ function harness(opts: { isAuthenticated?: boolean; isAdmin?: boolean; visible?:
       isThai={opts.isThai ?? false}
       isAuthenticated={opts.isAuthenticated ?? false}
       isAdmin={opts.isAdmin ?? false}
-      ign="Mew"
+      ign="Aria"
       members={guildMembers}
       auction={state.result.current.auction}
       admin={state.result.current.admin}

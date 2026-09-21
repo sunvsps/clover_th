@@ -16,9 +16,9 @@ type Props = {
  * the round controls, the "manage administrators" panel and the page-lock picker.
  */
 export default function AdminView({ isAdmin, auction, admin, members, notify }: Props) {
-  const filteredGuildMembers = members
-    .map((member) => member.name)
-    .filter((member) => member.toLowerCase().includes(admin.adminSearch.toLowerCase().trim()));
+  const filteredGuildMembers = members.filter((member) =>
+    member.ign.toLowerCase().includes(admin.adminSearch.toLowerCase().trim()),
+  );
 
   return (
     <>
@@ -89,16 +89,16 @@ export default function AdminView({ isAdmin, auction, admin, members, notify }: 
           </label>
           <div className="member-admin-list">
             {filteredGuildMembers.map((member) => (
-              <label className="member-admin-row" key={member}>
-                <span className="member-avatar">{member.charAt(0)}</span>
+              <label className="member-admin-row" key={member.id}>
+                <span className="member-avatar">{member.ign.charAt(0)}</span>
                 <span>
-                  <strong>{member}</strong>
+                  <strong>{member.ign}</strong>
                   <small>Discord guild member</small>
                 </span>
                 <input
                   type="checkbox"
-                  checked={admin.adminMembers.includes(member)}
-                  onChange={() => admin.toggleAdminMember(member)}
+                  checked={admin.adminMembers.includes(member.id)}
+                  onChange={() => admin.toggleAdminMember(member.id)}
                 />
               </label>
             ))}

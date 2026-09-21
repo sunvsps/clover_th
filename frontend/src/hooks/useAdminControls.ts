@@ -65,11 +65,9 @@ export function useAdminControls({ lockedPages, setLockedPages, notify }: Option
     togglePendingPage,
     applyPageLocks,
     toggleAdminMember,
-    /** roster changes keep the admin selection in step */
-    renameAdminMember: (oldName: string, newName: string) =>
-      setAdminMembers((current) => current.map((member) => (member === oldName ? newName : member))),
-    dropAdminMember: (name: string) =>
-      setAdminMembers((current) => current.filter((member) => member !== name)),
+    /** a removed member also leaves the admin selection (the list holds memberIds) */
+    dropAdminMember: (memberId: string) =>
+      setAdminMembers((current) => current.filter((member) => member !== memberId)),
   };
 }
 
