@@ -128,6 +128,69 @@ document.cookie = "session=<ค่าที่ได้>; path=/"
 
 ลองยิง API ด้วย Postman ตามคู่มือ [docs/postman.md](docs/postman.md)
 
+## Deploy เวอร์ชันทดลอง (staging) บน Railway
+
+> **สถานะ:** ขั้นตอนนี้เขียนจากความรู้ทั่วไปเกี่ยวกับ Railway ยังไม่ได้ทดลอง deploy จริง ชื่อเมนูอาจต่างเล็กน้อย และยังไม่มี `Dockerfile` ใน repo (คำสั่ง build ในขั้น 3 จึงยังไม่ได้ทดสอบบน Railway) รายละเอียดตัวแปรและ backup ดู [docs/deploy.md](docs/deploy.md)
+
+ข้อควรรู้ก่อนเริ่ม
+
+- **ล็อกอินสาธิต (`LOCAL_DEMO_ENABLED`) ใช้บน Railway ไม่ได้** เซิร์ฟเวอร์ปฏิเสธการสตาร์ทเมื่อตั้งคู่กับ `NODE_ENV=production` ผู้ทดลองจึงต้องล็อกอินด้วย Discord จริง และต้องถูกลงทะเบียนไว้ก่อน
+- ให้ตั้ง `NODE_ENV=production` แม้เป็นเว็บทดลอง เพราะเว็บอยู่บนอินเทอร์เน็ตจริง (cookie ปลอดภัย เอกสาร API ถูกปิด)
+- `db:seed -- --dev` (สมาชิกปลอม) รันไม่ได้ตอน production สมาชิกต้องมาจากบอทหรือคุณลงทะเบียนเอง
+- ใช้โปรเจกต์ Railway และ Postgres แยกจากของจริง และรันได้เพียง **1 replica** เท่านั้น
+
+**1. ตั้ง Discord application** (Developer Portal: https://discord.com/developers/applications)
+สร้าง New Application แล้วคัดลอก Client ID กับ Client Secret เพิ่ม Redirect `https://<โดเมน>/api/v1/auth/discord/callback` (ทำหลังได้โดเมนในขั้น 4) และเปิด Developer Mode ใน Discord เพื่อ Copy User ID ของผู้ทดลองแต่ละคน
+
+**2. สร้างโปรเจกต์บน Railway**
+New Project แล้ว Deploy from GitHub repo เลือก `sunvsps/cover_th` ตั้ง Branch เป็น `feature/frontend-api-integration` แล้วเพิ่มฐานข้อมูลด้วย + New แล้ว Database แล้ว PostgreSQL
+
+**3. ตั้ง build และ start** (Settings ของเซอร์วิส)
+
+- Build Command: build frontend (`npm ci` และ `npm run build` ใน `frontend/`) แล้ว build backend (`npm ci`, `npx prisma generate`, `npm run build` ใน `backend/`)
+- Start Command: `cd backend && node dist/src/server.js`
+- Pre-deploy Command: `cd backend && npx prisma migrate deploy && npm run db:seed`
+- Healthcheck Path: `/healthz`
+
+`db:seed` (ไม่มี `--dev`) สร้างอาชีพ กิจกรรม และผังทีมเริ่มต้น รันซ้ำได้ไม่เกิดข้อมูลซ้ำ
+
+**4. สร้างโดเมน**
+Settings แล้ว Networking แล้ว Generate Domain (ได้ HTTPS อัตโนมัติ) แล้วนำโดเมนไปใส่ Redirect ของ Discord ในขั้น 1
+
+**5. ตั้งตัวแปร** (Variables ของเซอร์วิส)
+
+| ตัวแปร | ค่า |
+|---|---|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | อ้างอิงจากเซอร์วิส Postgres แล้วต่อท้าย `?connection_limit=25&pool_timeout=10` |
+| `SESSION_SECRET` | ค่าสุ่มจาก `openssl rand -base64 48` |
+| `FRONTEND_URL` | `https://<โดเมน>` ต้องตรงกับที่ผู้ใช้เปิดเป๊ะ |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | จากขั้น 1 |
+| `DISCORD_REDIRECT_URI` | `https://<โดเมน>/api/v1/auth/discord/callback` |
+| `BOT_API_KEYS` | ค่า digest จริงจาก `npm run hash-bot-key -- --generate` (ค่า `bot key` ที่ได้ไว้ใช้ยิงเอง ห้ามใส่ใน Railway) |
+| `TRUST_PROXY_HOPS` | `1` (ควรตรวจว่า IP ผู้ใช้ที่ระบบเห็นไม่ใช่ IP ของ proxy) |
+| `NOTIFICATIONS_PROVIDER` | `off` (จนกว่าจะรู้ว่าบอทรับ HTTP ได้) |
+
+**ห้ามตั้ง `LOCAL_DEMO_ENABLED`** พอตั้งเสร็จ Railway จะ deploy ใหม่เอง รอสถานะ Active
+
+**6. ลงทะเบียนผู้ทดลองและตั้งแอดมิน**
+ลงทะเบียนทีละคนจากเครื่องคุณ (ชื่ออาชีพต้องตรงกับที่มีในระบบ ไม่งั้นได้ `INVALID_JOB`)
+
+```bash
+curl -X PUT "https://<โดเมน>/api/v1/bot/members/<Discord User ID>" -H "X-Bot-Key: <bot key>" -H "Content-Type: application/json" -d '{"ign":"<ชื่อในเกม>","job":"<อาชีพ>","nickname":"<ชื่อเล่น>"}'
+```
+
+ตั้งตัวเองเป็นแอดมินด้วยสคริปต์ที่ต่อฐานข้อมูลผ่าน connection URL สาธารณะของ Postgres (ตัวแปร `DATABASE_PUBLIC_URL` ของเซอร์วิส Postgres URL นี้คือรหัสผ่าน ห้ามส่งหรือเก็บลงไฟล์)
+
+```bash
+DATABASE_URL="<DATABASE_PUBLIC_URL>" npm run grant-admin -- <Discord User ID>
+```
+
+**7. ตรวจ**
+เปิด `https://<โดเมน>/healthz` (ต้องปกติ), เปิดหน้าเว็บแล้วกด Sign in with Discord (ต้องกลับมาเป็นแอดมินพร้อมแท็บ Admin) และ `https://<โดเมน>/docs/json` ต้องได้ 404
+
+หลังมีสมาชิกครบ ให้แอดมินสร้างรอบประมูลตัวอย่างและตั้งค่ากิจกรรมในหน้า Admin เพื่อให้ผู้ทดลองมีของให้ลอง
+
 ## เทสต์
 
 Backend (ต้องเปิด Docker Desktop สคริปต์สร้าง Postgres ชั่วคราวเอง)
