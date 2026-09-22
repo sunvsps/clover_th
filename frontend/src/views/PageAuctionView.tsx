@@ -74,6 +74,8 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
   const [isAuctionStarted, setIsAuctionStarted] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(15);
+  // A round is either for normal pages or for tagged (locked) pages; both share the same timer.
+  const [roundMode, setRoundMode] = useState<"normal" | "locked">("normal");
   const [pageCategories, setPageCategories] = useState<Record<number, QueueCategory>>(saved.pageCategories ?? {});
   const [pendingPageCategories, setPendingPageCategories] = useState<Record<number, QueueCategory>>({});
   const [categoryClaims, setCategoryClaims] = useState<CategoryClaims>(() => saved.categoryClaims ?? emptyClaims());
@@ -141,8 +143,11 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
         .sort((a, b) => a - b),
     }));
   const claimedCount = itemList.filter((item) => item.status === "claimed").length;
+  const hasTaggedPages = Object.keys(pageCategories).length > 0;
   const isAuctionClosed = !isAuctionStarted || countdown !== null || timeLeft <= 0;
   const formattedTime = `${String(Math.floor(timeLeft / 60)).padStart(2, "0")}:${String(timeLeft % 60).padStart(2, "0")}`;
+  const lockedRoundOpen = !isAuctionClosed && roundMode === "locked";
+  const normalRoundOpen = !isAuctionClosed && roundMode === "normal";
   const copy = {
     liveBoard: isThai
       ? "กระดานจองไอเท็มแบบเรียลไทม์"
@@ -177,10 +182,9 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
   };
 
   useEffect(() => {
-
-    if (isAuctionStarted && countdown === null && timeLeft <= 0 && !roundResolved) resolveCategoryRound();
+    if (isAuctionStarted && countdown === null && timeLeft <= 0 && roundMode === "locked" && !roundResolved) resolveCategoryRound();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuctionStarted, countdown, timeLeft, roundResolved]);
+  }, [isAuctionStarted, countdown, timeLeft, roundMode, roundResolved]);
 
   useEffect(() => {
     if (!isAuctionStarted || countdown !== null || timeLeft <= 0) return;
@@ -421,15 +425,21 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
     setNotice(`${item} returned to pending.`);
   }
 
-  function startRound() {
+  /** Starts a round. "normal" opens the untagged pages; "locked" opens the tagged (queue-category) pages instead — same timer either way. */
+  function startRound(mode: "normal" | "locked") {
     if (countdown !== null) return;
+    setRoundMode(mode);
     setRoundNumber((round) => (round === 0 ? 1 : round + 1));
-    setCategoryClaims(emptyClaims());
-    setSlotRankings({});
-    setRoundResolved(false);
+    if (mode === "locked") {
+      setCategoryClaims(emptyClaims());
+      setSlotRankings({});
+      setRoundResolved(false);
+    } else {
+      setRoundResolved(true);
+    }
     setIsAuctionStarted(false);
     setCountdown(3);
-    setNotice("New auction session starting...");
+    setNotice(mode === "locked" ? (isThai ? "กำลังเริ่มรอบประมูล item lock..." : "Locked-item round starting...") : "New auction session starting...");
   }
 
   function openAdminPagePicker() {
@@ -473,8 +483,8 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
       setNotice(isThai ? `ต้องลงคิว ${categoryLabel(category)} ก่อนถึงจะจองหน้านี้ได้` : `Join the ${categoryLabel(category)} queue before reserving on this page.`);
       return;
     }
-    if (isAuctionClosed) {
-      setNotice(!isAuctionStarted ? "The admin has not started this round yet." : "This round has ended.");
+    if (!lockedRoundOpen) {
+      setNotice(isThai ? "หน้าที่ติดป้ายจะลงชื่อได้เฉพาะตอนแอดมินเปิดรอบประมูล item lock" : "Tagged pages can only be claimed while the admin runs a locked-item round.");
       return;
     }
     const current = categoryClaims[category][myName];
@@ -613,6 +623,7 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
             <strong>{copy.guildAuction}</strong>
             <small>
               {isAuctionClosed ? "Round closed" : `${formattedTime} remaining`}
+              {!isAuctionClosed && ` · ${roundMode === "locked" ? (isThai ? "ของล็อก" : "locked items") : isThai ? "ของปกติ" : "normal items"}`}
             </small>
             {isAuthenticated && (
               <em className={`quota ${reachedLimit ? "full" : ""}`}>
@@ -633,7 +644,9 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
                   ? copy.waiting
                   : timeLeft <= 0
                     ? "Round time is over"
-                    : copy.auctionOpen}
+                    : roundMode === "locked"
+                      ? isThai ? "เปิดประมูล item lock แล้ว (เฉพาะคนในคิว)" : "Locked-item round is open (queued members only)"
+                      : copy.auctionOpen}
               </strong>
               <small>
                 {isAuctionClosed
@@ -704,9 +717,18 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
               type="button"
               className="admin-button"
               disabled={countdown !== null}
-              onClick={startRound}
+              onClick={() => startRound("normal")}
             >
-              {countdown !== null ? "Starting..." : "Start round"}
+              {countdown !== null && roundMode === "normal" ? "Starting..." : "Start round"}
+            </button>
+            <button
+              type="button"
+              className="admin-button locked"
+              disabled={countdown !== null || !hasTaggedPages}
+              title={!hasTaggedPages ? (isThai ? "ติดป้ายหน้าก่อนถึงจะประมูล item lock ได้" : "Tag some pages first") : undefined}
+              onClick={() => startRound("locked")}
+            >
+              <Lock size={13} /> {countdown !== null && roundMode === "locked" ? "Starting..." : isThai ? "ประมูล item lock" : "Auction locked items"}
             </button>
             <button
               type="button"
@@ -868,7 +890,7 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
                       const isHolder = holder === myName;
                       const myClaim = categoryClaims[category][myName];
                       const queued = inQueue(category, myName);
-                      const canClaim = isAuthenticated && queued && !isAuctionClosed && item.status !== "claimed" && (!holder || isHolder);
+                      const canClaim = isAuthenticated && queued && lockedRoundOpen && item.status !== "claimed" && (!holder || isHolder);
                       return (
                         <article className={`item-card queue-slot ${item.status} ${holder ? "held" : ""} ${isHolder ? "mine-claim" : ""}`} key={item.id}>
                           <div className="item-info">
@@ -894,7 +916,7 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
                               className={`claim-button ${isHolder ? "on-slot" : ""}`}
                               type="button"
                               disabled={!canClaim}
-                              title={!queued && isAuthenticated ? (isThai ? `ต้องลงคิว ${categoryLabel(category)} ก่อน` : `Join the ${categoryLabel(category)} queue first`) : undefined}
+                              title={!queued && isAuthenticated ? (isThai ? `ต้องลงคิว ${categoryLabel(category)} ก่อน` : `Join the ${categoryLabel(category)} queue first`) : queued && !lockedRoundOpen ? (isThai ? "รอแอดมินกดประมูล item lock" : "Waiting for the admin to run a locked-item round") : undefined}
                               onClick={() => claimItem(item.id)}
                             >
                               {item.status === "claimed" ? (
@@ -904,6 +926,10 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
                               ) : !queued ? (
                                 <>
                                   <ListOrdered size={14} /> {isThai ? "ต้องลงคิว" : "Queue first"}
+                                </>
+                              ) : !lockedRoundOpen ? (
+                                <>
+                                  <Lock size={14} /> {isThai ? "ยังไม่เปิดรอบ" : "Round not open"}
                                 </>
                               ) : isHolder ? (
                                 <>
@@ -943,7 +969,7 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
                           type="button"
                           disabled={
                             !isAuthenticated ||
-                            (isAuctionClosed && !isMine) ||
+                            (!normalRoundOpen && !isMine) ||
                             (item.status === "claimed" && !isMine) ||
                             (reachedLimit && !isMine)
                           }
@@ -1114,7 +1140,7 @@ export default function PageAuctionView({ isThai, me, isAdmin, data, notify, tab
           <div className="countdown-modal">
             <span>ROUND {String(roundNumber).padStart(2, "0")}</span>
             <strong>{countdown}</strong>
-            <small>Auction starting</small>
+            <small>{roundMode === "locked" ? (isThai ? "ประมูล item lock กำลังเริ่ม" : "Locked-item auction starting") : "Auction starting"}</small>
           </div>
         </div>
       )}

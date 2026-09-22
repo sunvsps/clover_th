@@ -23,7 +23,28 @@ function useNow(intervalMs: number) {
   return now;
 }
 type Occurrence = { event: ScheduleEvent; dateKey: string };
-type Placement = Plan["rooms"][number]["teams"][number]["placements"][number];
+type Team = Plan["rooms"][number]["teams"][number];
+type Placement = Team["placements"][number];
+
+/** Clusters a room's subteams by their (optional) group name, preserving first-appearance order; ungrouped subteams stay solo. */
+function groupTeams(teams: Team[]): { label: string | null; teams: Team[] }[] {
+  const groups: { label: string | null; teams: Team[] }[] = [];
+  const byLabel = new Map<string, { label: string | null; teams: Team[] }>();
+  teams.forEach((team) => {
+    if (!team.group) {
+      groups.push({ label: null, teams: [team] });
+      return;
+    }
+    let group = byLabel.get(team.group);
+    if (!group) {
+      group = { label: team.group, teams: [] };
+      byLabel.set(team.group, group);
+      groups.push(group);
+    }
+    group.teams.push(team);
+  });
+  return groups;
+}
 
 export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError, reloadData }: ViewProps) {
   const { scoreOf, store: gearStore } = useGearScores();
@@ -36,10 +57,12 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
   };
   const teamCp = (memberIds: string[]) => memberIds.reduce((total, memberId) => total + (cpOf(memberId) ?? 0), 0);
   const cpCoverage = Object.keys(gearStore).length;
+  // Same activity set (and names) as the Layout editor in Admin config, so the two stay in sync.
+  const plannerActivities = useMemo(() => data.activities.filter((activity) => activity.hasPlanner), [data.activities]);
   const plannerEvents = useMemo(() => {
-    const plannerActivities = new Set(data.activities.filter((activity) => activity.hasPlanner).map((activity) => activity.id));
-    return data.events.filter((event) => plannerActivities.has(event.activityId));
-  }, [data]);
+    const plannerActivityIds = new Set(plannerActivities.map((activity) => activity.id));
+    return data.events.filter((event) => plannerActivityIds.has(event.activityId));
+  }, [data.events, plannerActivities]);
 
   // Occurrences of planner events in this week and the next two.
   const occurrences = useMemo<Occurrence[]>(() => {
@@ -51,8 +74,12 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
     return list.sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.event.startTime.localeCompare(b.event.startTime));
   }, [plannerEvents]);
 
+  const [selectedActivityId, setSelectedActivityId] = useState<string>("");
   const [selectedKey, setSelectedKey] = useState<string>("");
-  const selected = occurrences.find((occurrence) => `${occurrence.dateKey}:${occurrence.event.id}` === selectedKey) ?? occurrences.find((occurrence) => occurrence.dateKey >= todayKey()) ?? occurrences[0];
+  const nextUpcoming = occurrences.find((occurrence) => occurrence.dateKey >= todayKey()) ?? occurrences[0];
+  const activeActivityId = selectedActivityId && plannerActivities.some((activity) => activity.id === selectedActivityId) ? selectedActivityId : (nextUpcoming?.event.activityId ?? plannerActivities[0]?.id ?? "");
+  const occurrencesForActivity = occurrences.filter((occurrence) => occurrence.event.activityId === activeActivityId);
+  const selected = occurrencesForActivity.find((occurrence) => `${occurrence.dateKey}:${occurrence.event.id}` === selectedKey) ?? occurrencesForActivity.find((occurrence) => occurrence.dateKey >= todayKey()) ?? occurrencesForActivity[0];
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [hoverTarget, setHoverTarget] = useState<string | null>(null);
@@ -274,6 +301,45 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
     );
   };
 
+  const subteamCard = (team: Team) => {
+    const bySlot = new Map(team.placements.map((p) => [p.slot, p]));
+    const isFull = team.placements.length >= team.size;
+    const canReceive = canEdit && picked !== null && !team.placements.some((p) => p.memberId === picked);
+    return (
+      <div
+        className={`subteam-card ${hoverTarget === `team-${team.id}` ? "hover" : ""} ${isFull ? "full" : ""} ${canReceive ? "receivable" : ""} ${team.placements.length === 0 ? "empty-team" : ""}`}
+        key={team.id}
+        onDragOver={dragOver(`team-${team.id}`)}
+        onDragLeave={() => setHoverTarget((current) => (current === `team-${team.id}` ? null : current))}
+        onDrop={dropTo(team.id)}
+        onClick={() => tapTarget(team.id)}
+      >
+        <div className="subteam-title">
+          <strong>{team.name}</strong>
+          <small>
+            {team.placements.length}/{team.size}
+            {team.placements.length > 0 && cpCoverage > 0 && <b className="team-cp"> · CP {formatCp(teamCp(team.placements.map((p) => p.memberId)))}</b>}
+          </small>
+        </div>
+        <div className="subteam-slots">
+          {Array.from({ length: team.size }, (_, index) => {
+            const slot = index + 1;
+            const placement = bySlot.get(slot);
+            return placement ? (
+              <div className="subteam-slot" key={slot} onDragOver={dragOver(`slot-${team.id}-${slot}`)} onDrop={dropTo(team.id, slot)} onClick={(event) => { event.stopPropagation(); tapTarget(team.id, slot); }}>
+                {chip(placement.memberId, placement)}
+              </div>
+            ) : (
+              <div className="subteam-slot empty" key={slot} onDragOver={dragOver(`slot-${team.id}-${slot}`)} onDrop={dropTo(team.id, slot)} onClick={(event) => { event.stopPropagation(); tapTarget(team.id, slot); }}>
+                <span>{slot}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const importDialog =
     importOpen && canEdit ? (
       <RosterImport
@@ -355,18 +421,45 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
         </div>
       </div>
 
+      <div className="activity-tabs" role="tablist" aria-label={isThai ? "กิจกรรม" : "Activity"}>
+        {plannerActivities.map((activity) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activity.id === activeActivityId}
+            className={activity.id === activeActivityId ? "active" : ""}
+            key={activity.id}
+            onClick={() => {
+              setSelectedActivityId(activity.id);
+              setSelectedKey("");
+            }}
+          >
+            {activity.name}
+          </button>
+        ))}
+      </div>
+
       <div className="occurrence-picker">
-        <label>
-          <span>{isThai ? "กิจกรรม / วันที่" : "Activity / date"}</span>
-          <select value={`${selected.dateKey}:${selected.event.id}`} onChange={(event) => setSelectedKey(event.target.value)}>
-            {occurrences.map((occurrence) => (
-              <option value={`${occurrence.dateKey}:${occurrence.event.id}`} key={`${occurrence.dateKey}:${occurrence.event.id}`}>
-                {(isThai ? weekDayShort.th : weekDayShort.en)[occurrence.event.dayOfWeek]} {formatDay(occurrence.dateKey, isThai)} · {occurrence.event.name} {occurrence.event.startTime}
-                {occurrence.dateKey === todayKey() ? (isThai ? " (วันนี้)" : " (today)") : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+        {occurrencesForActivity.length > 1 ? (
+          <label>
+            <span>{isThai ? "วันที่" : "Date"}</span>
+            <select value={selected ? `${selected.dateKey}:${selected.event.id}` : ""} onChange={(event) => setSelectedKey(event.target.value)}>
+              {occurrencesForActivity.map((occurrence) => (
+                <option value={`${occurrence.dateKey}:${occurrence.event.id}`} key={`${occurrence.dateKey}:${occurrence.event.id}`}>
+                  {(isThai ? weekDayShort.th : weekDayShort.en)[occurrence.event.dayOfWeek]} {formatDay(occurrence.dateKey, isThai)} · {occurrence.event.startTime}
+                  {occurrence.dateKey === todayKey() ? (isThai ? " (วันนี้)" : " (today)") : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          selected && (
+            <span className="occurrence-meta solo-date">
+              {(isThai ? weekDayShort.th : weekDayShort.en)[selected.event.dayOfWeek]} {formatDay(selected.dateKey, isThai)} · {selected.event.startTime}
+              {selected.dateKey === todayKey() ? (isThai ? " (วันนี้)" : " (today)") : ""}
+            </span>
+          )
+        )}
         {plan && (
           <span className="occurrence-meta">
             {isThai ? "เวอร์ชัน" : "version"} {plan.version} · {placedIds.size} {isThai ? "คนในทีม" : "placed"} · {reserves.length} {isThai ? "ตัวสำรอง" : "reserves"}
@@ -446,6 +539,9 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
             <div className="rooms">
               {plan.rooms.map((room, roomIndex) => {
                 const placedInRoom = room.teams.reduce((total, team) => total + team.placements.length, 0);
+                const clusters = groupTeams(room.teams);
+                const groups = clusters.filter((cluster) => cluster.label !== null) as { label: string; teams: Team[] }[];
+                const solo = clusters.filter((cluster) => cluster.label === null).flatMap((cluster) => cluster.teams);
                 return (
                   <div className={`team-column ${roomIndex === 0 ? "team-a" : roomIndex === 1 ? "team-b" : ""}`} key={room.id}>
                     <h3>
@@ -455,46 +551,23 @@ export default function TeamPlanner({ isThai, isAdmin, data, notify, notifyError
                         {placedInRoom > 0 && cpCoverage > 0 && ` · CP ${formatCp(teamCp(room.teams.flatMap((team) => team.placements.map((p) => p.memberId))))}`}
                       </small>
                     </h3>
-                    <div className="subteam-grid">
-                      {room.teams.map((team) => {
-                        const bySlot = new Map(team.placements.map((p) => [p.slot, p]));
-                        const isFull = team.placements.length >= team.size;
-                        const canReceive = canEdit && picked !== null && !team.placements.some((p) => p.memberId === picked);
-                        return (
-                          <div
-                            className={`subteam-card ${hoverTarget === `team-${team.id}` ? "hover" : ""} ${isFull ? "full" : ""} ${canReceive ? "receivable" : ""} ${team.placements.length === 0 ? "empty-team" : ""}`}
-                            key={team.id}
-                            onDragOver={dragOver(`team-${team.id}`)}
-                            onDragLeave={() => setHoverTarget((current) => (current === `team-${team.id}` ? null : current))}
-                            onDrop={dropTo(team.id)}
-                            onClick={() => tapTarget(team.id)}
-                          >
-                            <div className="subteam-title">
-                              <strong>{team.name}</strong>
+                    {groups.length > 0 && (
+                      <div className="room-groups">
+                        {groups.map((group) => (
+                          <div className="team-group" key={group.label}>
+                            <div className="team-group-title">
+                              <strong>{group.label}</strong>
                               <small>
-                                {team.placements.length}/{team.size}
-                                {team.placements.length > 0 && cpCoverage > 0 && <b className="team-cp"> · CP {formatCp(teamCp(team.placements.map((p) => p.memberId)))}</b>}
+                                {group.teams.reduce((total, team) => total + team.placements.length, 0)}/{group.teams.reduce((total, team) => total + team.size, 0)}
+                                {cpCoverage > 0 && group.teams.some((team) => team.placements.length) && <b className="team-cp"> · CP {formatCp(teamCp(group.teams.flatMap((team) => team.placements.map((p) => p.memberId))))}</b>}
                               </small>
                             </div>
-                            <div className="subteam-slots">
-                              {Array.from({ length: team.size }, (_, index) => {
-                                const slot = index + 1;
-                                const placement = bySlot.get(slot);
-                                return placement ? (
-                                  <div className="subteam-slot" key={slot} onDragOver={dragOver(`slot-${team.id}-${slot}`)} onDrop={dropTo(team.id, slot)} onClick={(event) => { event.stopPropagation(); tapTarget(team.id, slot); }}>
-                                    {chip(placement.memberId, placement)}
-                                  </div>
-                                ) : (
-                                  <div className="subteam-slot empty" key={slot} onDragOver={dragOver(`slot-${team.id}-${slot}`)} onDrop={dropTo(team.id, slot)} onClick={(event) => { event.stopPropagation(); tapTarget(team.id, slot); }}>
-                                    <span>{slot}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            <div className="group-subteams">{group.teams.map((team) => subteamCard(team))}</div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        ))}
+                      </div>
+                    )}
+                    {solo.length > 0 && <div className="subteam-grid ungrouped">{solo.map((team) => subteamCard(team))}</div>}
                   </div>
                 );
               })}

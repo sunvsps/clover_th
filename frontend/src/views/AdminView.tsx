@@ -326,7 +326,7 @@ function LayoutSection({ isThai, data, reloadData, notify, notifyError }: Props)
   const plannerActivities = data.activities.filter((activity) => activity.hasPlanner);
   const [activityId, setActivityId] = useState(plannerActivities[0]?.id ?? "");
   const [layout, setLayout] = useState<Layout | null>(null);
-  const [draft, setDraft] = useState<{ id?: number; key: string; name: string; teams: { id?: number; name: string; size: number }[] }[]>([]);
+  const [draft, setDraft] = useState<{ id?: number; key: string; name: string; teams: { id?: number; name: string; size: number; group?: string | null }[] }[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -335,7 +335,7 @@ function LayoutSection({ isThai, data, reloadData, notify, notifyError }: Props)
       .layout(activityId)
       .then((result) => {
         setLayout(result);
-        setDraft(result.rooms.map((room) => ({ id: room.id, key: room.key, name: room.name, teams: room.teams.map((team) => ({ id: team.id, name: team.name, size: team.size })) })));
+        setDraft(result.rooms.map((room) => ({ id: room.id, key: room.key, name: room.name, teams: room.teams.map((team) => ({ id: team.id, name: team.name, size: team.size, group: team.group })) })));
       })
       .catch(notifyError);
   }, [activityId, notifyError]);
@@ -345,7 +345,7 @@ function LayoutSection({ isThai, data, reloadData, notify, notifyError }: Props)
     try {
       const result = await planner.saveLayout(activityId, { rooms: draft });
       setLayout(result);
-      setDraft(result.rooms.map((room) => ({ id: room.id, key: room.key, name: room.name, teams: room.teams.map((team) => ({ id: team.id, name: team.name, size: team.size })) })));
+      setDraft(result.rooms.map((room) => ({ id: room.id, key: room.key, name: room.name, teams: room.teams.map((team) => ({ id: team.id, name: team.name, size: team.size, group: team.group })) })));
       notify(isThai ? "บันทึกผังทีมแล้ว" : "Layout saved.");
       await reloadData();
     } catch (error) {
@@ -355,6 +355,43 @@ function LayoutSection({ isThai, data, reloadData, notify, notifyError }: Props)
     }
   }
   const updateRoom = (index: number, patch: Partial<(typeof draft)[number]>) => setDraft(draft.map((room, i) => (i === index ? { ...room, ...patch } : room)));
+
+  /** Splits a room's flat team list into its groups (e.g. "A" -> A1, A2), preserving first-appearance order; ungrouped teams stay solo. */
+  function roomGroups(teams: (typeof draft)[number]["teams"]) {
+    const groups: { label: string | null; entries: { team: (typeof teams)[number]; index: number }[] }[] = [];
+    const byLabel = new Map<string, (typeof groups)[number]>();
+    teams.forEach((team, index) => {
+      if (!team.group) {
+        groups.push({ label: null, entries: [{ team, index }] });
+        return;
+      }
+      let group = byLabel.get(team.group);
+      if (!group) {
+        group = { label: team.group, entries: [] };
+        byLabel.set(team.group, group);
+        groups.push(group);
+      }
+      group.entries.push({ team, index });
+    });
+    return groups;
+  }
+  function nextGroupLabel(teams: (typeof draft)[number]["teams"]) {
+    const used = new Set(teams.map((team) => team.group).filter(Boolean));
+    for (let i = 0; i < 26; i += 1) {
+      const letter = String.fromCharCode(65 + i);
+      if (!used.has(letter)) return letter;
+    }
+    return `Group ${teams.length + 1}`;
+  }
+  const teamNameInput = (roomIndex: number, teamIndex: number, team: (typeof draft)[number]["teams"][number]) => (
+    <li key={team.id ?? teamIndex}>
+      <input className="small-input" type="text" value={team.name} onChange={(event) => updateRoom(roomIndex, { teams: draft[roomIndex].teams.map((entry, i) => (i === teamIndex ? { ...entry, name: event.target.value } : entry)) })} aria-label="Team name" />
+      <input className="small-input tiny" type="number" min={1} max={5} value={team.size} onChange={(event) => updateRoom(roomIndex, { teams: draft[roomIndex].teams.map((entry, i) => (i === teamIndex ? { ...entry, size: Math.min(5, Number(event.target.value) || 1) } : entry)) })} aria-label="Team size" />
+      <button type="button" className="chip-tool remove" onClick={() => updateRoom(roomIndex, { teams: draft[roomIndex].teams.filter((_, i) => i !== teamIndex) })} aria-label="Remove team">
+        <X size={11} />
+      </button>
+    </li>
+  );
 
   return (
     <div className="admin-section">
@@ -387,20 +424,57 @@ function LayoutSection({ isThai, data, reloadData, notify, notifyError }: Props)
                 <Trash2 size={11} />
               </button>
             </h3>
-            <ul className="layout-teams">
-              {room.teams.map((team, teamIndex) => (
-                <li key={team.id ?? teamIndex}>
-                  <input className="small-input" type="text" value={team.name} onChange={(event) => updateRoom(roomIndex, { teams: room.teams.map((entry, i) => (i === teamIndex ? { ...entry, name: event.target.value } : entry)) })} aria-label="Team name" />
-                  <input className="small-input tiny" type="number" min={1} max={20} value={team.size} onChange={(event) => updateRoom(roomIndex, { teams: room.teams.map((entry, i) => (i === teamIndex ? { ...entry, size: Number(event.target.value) || 1 } : entry)) })} aria-label="Team size" />
-                  <button type="button" className="chip-tool remove" onClick={() => updateRoom(roomIndex, { teams: room.teams.filter((_, i) => i !== teamIndex) })} aria-label="Remove team">
-                    <X size={11} />
+            {roomGroups(room.teams).map((group, groupIndex) =>
+              group.label ? (
+                <div className="layout-group" key={group.label}>
+                  <div className="layout-group-header">
+                    <input
+                      className="small-input"
+                      type="text"
+                      value={group.label}
+                      title={isThai ? "เปลี่ยนชื่อกลุ่มนี้ (ใช้กับทีมย่อยทั้งหมดในกลุ่ม)" : "Rename this group (applies to every subteam in it)"}
+                      onChange={(event) => {
+                        const nextLabel = event.target.value;
+                        updateRoom(roomIndex, { teams: room.teams.map((entry) => (entry.group === group.label ? { ...entry, group: nextLabel || null } : entry)) });
+                      }}
+                      aria-label="Group name"
+                    />
+                    <button
+                      type="button"
+                      className="chip-tool remove"
+                      title={isThai ? "ลบกลุ่มนี้ทั้งหมด" : "Remove this whole group"}
+                      onClick={() => {
+                        if (window.confirm(isThai ? `ลบกลุ่ม "${group.label}" และทีมย่อยทั้งหมดในกลุ่ม?` : `Remove group "${group.label}" and every subteam in it?`)) {
+                          updateRoom(roomIndex, { teams: room.teams.filter((entry) => entry.group !== group.label) });
+                        }
+                      }}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                  <ul className="layout-teams">{group.entries.map(({ team, index }) => teamNameInput(roomIndex, index, team))}</ul>
+                  <button
+                    type="button"
+                    className="copy-button tiny"
+                    onClick={() => updateRoom(roomIndex, { teams: [...room.teams, { name: `${group.label}${group.entries.length + 1}`, size: 5, group: group.label }] })}
+                  >
+                    <Plus size={11} /> {isThai ? "เพิ่มทีมย่อย" : "Add subteam"}
                   </button>
-                </li>
-              ))}
-            </ul>
-            <button type="button" className="copy-button" onClick={() => updateRoom(roomIndex, { teams: [...room.teams, { name: `Team ${room.teams.length + 1}`, size: 5 }] })}>
-              <Plus size={12} /> {isThai ? "เพิ่มทีม" : "Add team"}
-            </button>
+                </div>
+              ) : (
+                <ul className="layout-teams ungrouped" key={`solo-${groupIndex}`}>
+                  {group.entries.map(({ team, index }) => teamNameInput(roomIndex, index, team))}
+                </ul>
+              ),
+            )}
+            <div className="layout-room-actions">
+              <button type="button" className="copy-button" onClick={() => updateRoom(roomIndex, { teams: [...room.teams, { name: `${nextGroupLabel(room.teams)}1`, size: 5, group: nextGroupLabel(room.teams) }] })}>
+                <Plus size={12} /> {isThai ? "เพิ่มทีมใหญ่ (กลุ่ม)" : "Add group"}
+              </button>
+              <button type="button" className="copy-button secondary" onClick={() => updateRoom(roomIndex, { teams: [...room.teams, { name: `Team ${room.teams.length + 1}`, size: 5, group: null }] })}>
+                <Plus size={12} /> {isThai ? "เพิ่มทีมย่อย (ไม่มีกลุ่ม)" : "Add ungrouped subteam"}
+              </button>
+            </div>
           </div>
         ))}
       </div>

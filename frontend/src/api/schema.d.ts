@@ -1096,6 +1096,7 @@ export interface paths {
                                     id: number;
                                     name: string;
                                     size: number;
+                                    group: string | null;
                                     sortOrder: number;
                                 }[];
                             }[];
@@ -1124,6 +1125,7 @@ export interface paths {
                                 id?: number;
                                 name: string;
                                 size: number;
+                                group?: string | null;
                             }[];
                         }[];
                     };
@@ -1148,6 +1150,7 @@ export interface paths {
                                     id: number;
                                     name: string;
                                     size: number;
+                                    group: string | null;
                                     sortOrder: number;
                                 }[];
                             }[];
@@ -1204,6 +1207,7 @@ export interface paths {
                                     id: number;
                                     name: string;
                                     size: number;
+                                    group: string | null;
                                     archived: boolean;
                                     placements: {
                                         memberId: string;

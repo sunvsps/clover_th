@@ -10,7 +10,7 @@ type QueueCat = "GEAR" | "CARD" | "RELIC";
 type Member = { id: string; discordId: string; ign: string; nickname: string | null; jobId: number; isActive: boolean; isAdmin: boolean };
 type Job = { id: number; label: string; color: string; sortOrder: number };
 type Activity = { id: string; name: string; isGuild: boolean; hasPlanner: boolean; autoBackfill: boolean; registrationCapacity: number | null; notifyChannelId: string | null };
-type Team = { id: number; name: string; size: number };
+type Team = { id: number; name: string; size: number; group: string | null };
 type Room = { id: number; key: string; name: string; teams: Team[] };
 type Registration = { memberId: string; status: "JOINED" | "WAITLISTED" | "LEAVE"; registeredAt: number };
 type Placement = { memberId: string; teamId: number; slot: number; source: "ADMIN" | "COPY" | "AUTO_BACKFILL"; backfill?: { vacatedMemberId: string | null; reason: string | null; at: string } };
@@ -32,7 +32,7 @@ type State = {
   seq: number;
 };
 
-const STORE_KEY = "clover.mock.v2"; // bumped when the seed changes so stale demo state is discarded
+const STORE_KEY = "clover.mock.v3"; // bumped when the seed changes so stale demo state is discarded
 const SESSION_KEY = "clover.mock.session";
 
 class MockError extends Error {
@@ -63,7 +63,14 @@ function freshState(): State {
   );
   const layouts: Record<string, Room[]> = {};
   Object.entries(seedLayouts).forEach(([activityId, rooms]) => {
-    layouts[activityId] = rooms.map((room) => ({ id: seq++, key: room.key, name: room.name, teams: Array.from({ length: room.teams }, (_, t) => ({ id: seq++, name: `Team ${t + 1}`, size: 5 })) }));
+    layouts[activityId] = rooms.map((room) => ({
+      id: seq++,
+      key: room.key,
+      name: room.name,
+      teams: room.groups
+        ? room.groups.flatMap((group) => Array.from({ length: group.teams }, (_, t) => ({ id: seq++, name: `${group.label}${t + 1}`, size: 5, group: group.label })))
+        : Array.from({ length: room.teams ?? 0 }, (_, t) => ({ id: seq++, name: `Team ${t + 1}`, size: 5, group: null })),
+    }));
   });
   return {
     members,
@@ -172,6 +179,7 @@ function planResponse(s: State, eventId: string, date: string) {
       id: team.id,
       name: team.name,
       size: team.size,
+      group: team.group,
       archived: false,
       placements: plan.placements
         .filter((p) => p.teamId === team.id)
@@ -443,9 +451,9 @@ route("GET", "/api/v1/admin/activities/:id/layout", ({ s, me, params }) => {
 route("PUT", "/api/v1/admin/activities/:id/layout", ({ s, me, body, params }) => {
   requireAdmin(me);
   const activityId = params[0];
-  const rooms = body.rooms as { id?: number; key: string; name: string; teams: { id?: number; name: string; size: number }[] }[];
+  const rooms = body.rooms as { id?: number; key: string; name: string; teams: { id?: number; name: string; size: number; group?: string | null }[] }[];
   const placed = Object.entries(s.plans).filter(([key]) => eventOf(key.split(":")[1]).activityId === activityId).flatMap(([, plan]) => plan.placements);
-  const next: Room[] = rooms.map((room) => ({ id: room.id ?? s.seq++, key: room.key, name: room.name, teams: room.teams.map((team) => ({ id: team.id ?? s.seq++, name: team.name, size: team.size })) }));
+  const next: Room[] = rooms.map((room) => ({ id: room.id ?? s.seq++, key: room.key, name: room.name, teams: room.teams.map((team) => ({ id: team.id ?? s.seq++, name: team.name, size: team.size, group: team.group?.trim() || null })) }));
   const nextTeams = new Map(next.flatMap((r) => r.teams).map((t) => [t.id, t]));
   const orphan = placed.find((p) => !nextTeams.has(p.teamId) || p.slot > nextTeams.get(p.teamId)!.size);
   if (orphan) throw new MockError(409, "LAYOUT_BELOW_PLACED", "Members placed", { teamId: orphan.teamId });

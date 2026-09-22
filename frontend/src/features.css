@@ -468,6 +468,11 @@
 .pref-panel .admin-button { width: 100%; justify-content: center; }
 .pref-hint { display: block; margin-top: 6px; color: #f0a48f; font-size: 11px; text-align: center; }
 .queue-section { margin-top: 30px; padding-top: 24px; border-top: 1px solid #282d29; }
+.activity-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.activity-tabs button { padding: 8px 13px; color: #9aa697; background: #171a18; border: 1px solid #2b302c; border-radius: 7px; font-size: 12px; font-weight: 600; transition: .15s ease; }
+.activity-tabs button:hover { color: #d7e6cd; border-color: #465b40; }
+.activity-tabs button.active { color: #172012; background: #b9e86d; border-color: #b9e86d; }
+.occurrence-picker .solo-date { padding-bottom: 9px; }
 .occurrence-picker { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 16px; }
 .occurrence-picker label { display: flex; flex-direction: column; gap: 5px; color: #8d9c88; font: 10px 'DM Mono', monospace; letter-spacing: .06em; text-transform: uppercase; }
 .occurrence-picker select, .admin-toolbar select { padding: 9px 10px; color: #e8eee6; background: #202a1f; border: 1px solid #465b40; border-radius: 6px; font: 13px 'Anuphan', 'Manrope', sans-serif; text-transform: none; letter-spacing: 0; }
@@ -479,6 +484,17 @@
 .reserve-order { color: #7c8879; text-align: right; font: 700 11px 'DM Mono', monospace; }
 .rooms { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .rooms .subteam-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.room-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.room-groups:last-child { margin-bottom: 0; }
+.group-subteams { display: grid; grid-template-columns: 1fr; gap: 8px; }
+@media (max-width: 1100px) { .room-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .room-groups { grid-template-columns: 1fr; } }
+.team-group { min-width: 0; padding: 10px; border: 1px dashed #3a433a; border-radius: 9px; }
+.team-group-title { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; font-size: 13px; }
+.team-group-title strong { color: #d8e4d2; }
+.team-group-title small { color: #7c8879; font: 10px 'DM Mono', monospace; }
+.team-group .subteam-grid, .subteam-grid.ungrouped { margin-bottom: 12px; }
+.team-group .subteam-grid:last-child, .subteam-grid.ungrouped:last-child { margin-bottom: 0; }
 .subteam-card.empty-team { opacity: .55; }
 .subteam-card.empty-team:hover, .subteam-card.empty-team.hover, .subteam-card.empty-team.receivable { opacity: 1; }
 .member-chip.withdrawn { opacity: .7; outline: 2px dashed #c6483c; outline-offset: -2px; }
@@ -518,7 +534,15 @@
 .layout-rooms h3 { flex-wrap: wrap; }
 .layout-teams { margin: 0 0 10px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
 .layout-teams li { display: flex; align-items: center; gap: 6px; }
-.layout-teams .small-input:first-child { flex: 1; width: auto; }
+.layout-teams li > .small-input:first-child { flex: 1; width: auto; }
+.layout-group { margin-bottom: 12px; padding: 9px; border: 1px dashed #6a5a9a; border-radius: 9px; }
+.layout-group:last-of-type { margin-bottom: 10px; }
+.layout-group-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.layout-group-header .small-input { flex: 1; width: auto; color: #b79bff; font-weight: 700; }
+.layout-teams.ungrouped { margin-bottom: 10px; }
+.layout-room-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.copy-button.tiny { padding: 5px 8px; font-size: 9px; }
+.copy-button.secondary { color: #7d8e78; border-style: dashed; }
 .round-form { padding: 16px; border: 1px dashed #526749; background: rgba(30, 43, 29, .5); border-radius: 10px; }
 .round-form .eyebrow { display: flex; align-items: center; gap: 5px; margin-bottom: 10px; }
 .round-form .item-adder { margin-top: 10px; padding-top: 10px; border-top: 1px solid #2d392b; }
@@ -548,6 +572,10 @@
 .roster-import .summary-meta { margin: 14px 0 8px; }
 .roster-import .summary-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .roster-import .editor-actions { margin-top: 12px; }
+
+/* ---------- Locked-item round (tagged pages, same timer as the normal round) ---------- */
+.admin-button.locked { color: #f1ebff; background: #6a5a9a; }
+.admin-button.locked:disabled { opacity: .45; }
 
 /* ---------- Regular parties ---------- */
 .member-chip.has-party { border-left: 4px solid var(--party-color, transparent); }

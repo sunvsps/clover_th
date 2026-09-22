@@ -66,15 +66,22 @@ export const seedEvents = [
   { id: "guild-league-thu", activityId: "guild-league", day: 3, start: "22:00", end: "22:25" },
 ];
 
-export const seedLayouts: Record<string, { key: string; name: string; teams: number }[]> = {
+/** Main is split into groups (A, B, ...) of 5-member subteams; Sub stays a flat list of subteams. */
+export const seedLayouts: Record<string, { key: string; name: string; teams?: number; groups?: { label: string; teams: number }[] }[]> = {
   "guild-league": [
-    { key: "main", name: "Main", teams: 12 },
+    { key: "main", name: "Main", groups: [{ label: "A", teams: 4 }, { label: "B", teams: 4 }, { label: "C", teams: 4 }] },
     { key: "sub", name: "Sub", teams: 18 },
   ],
   "polarity-zone": [
-    { key: "a", name: "ทีม A", teams: 8 },
-    { key: "b", name: "ทีม B", teams: 8 },
+    { key: "main", name: "Main", groups: [{ label: "A", teams: 8 }, { label: "B", teams: 8 }] },
+    { key: "sub", name: "Sub", teams: 8 },
   ],
-  "mirror-world": [{ key: "default", name: "Main", teams: 8 }],
-  "castle-siege": [{ key: "default", name: "Main", teams: 8 }],
+  "mirror-world": [
+    { key: "main", name: "Main", groups: [{ label: "A", teams: 4 }, { label: "B", teams: 4 }] },
+    { key: "sub", name: "Sub", teams: 4 },
+  ],
+  "castle-siege": [
+    { key: "main", name: "Main", groups: [{ label: "A", teams: 4 }, { label: "B", teams: 4 }] },
+    { key: "sub", name: "Sub", teams: 4 },
+  ],
 };
