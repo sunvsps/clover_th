@@ -229,26 +229,6 @@ describe("type 2: ranked queues", () => {
   });
 });
 
-describe("queues tab", () => {
-  it("shows my place per category and lets me join and leave", async () => {
-    const { fake, user, notify } = setup(meUser, [liveRound()], { queues: { GEAR: ["m-cleo"] } });
-    await user.click(await screen.findByRole("tab", { name: "Queues" }));
-    const gear = await waitFor(() => {
-      const el = document.querySelector('[data-queue="gear"]') as HTMLElement;
-      expect(el).toHaveTextContent("Cleo");
-      return el;
-    });
-    expect(gear).toHaveTextContent("You are not in this queue");
-    await user.click(within(gear).getByRole("button", { name: /Join queue/ }));
-    await waitFor(() => expect(gear).toHaveTextContent("Your place: #2"));
-    expect(fake.calls.find((c) => c.method === "PUT")!.path).toMatch(/queues\/GEAR\/me$/); // upper-case category on the wire
-    expect(notify).toHaveBeenCalledWith("You are #2 in the Gear queue.");
-    await user.click(within(gear).getByRole("button", { name: /Leave queue/ }));
-    await waitFor(() => expect(gear).toHaveTextContent("You are not in this queue"));
-    expect(fake.calls.find((c) => c.method === "DELETE" && c.path.includes("queues"))!.path).toMatch(/queues\/GEAR\/me$/);
-  });
-});
-
 describe("rounds list", () => {
   it("an admin sees draft rounds in the picker and a note that management is not in this screen yet", async () => {
     setup(meAdmin, [liveRound(), { id: 5, type: "LIVE_CLAIM", name: "Next week", status: "DRAFT", items: items(1) }]);

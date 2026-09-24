@@ -4144,6 +4144,143 @@
         }
       }
     },
+    "/api/v1/admin/auctions/queues/{category}/{memberId}": {
+      "delete": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "in": "path",
+            "name": "category",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "in": "path",
+            "name": "memberId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "length": {
+                      "type": "number"
+                    },
+                    "myRank": {
+                      "nullable": true,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "length",
+                    "myRank"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auctions/queues/history": {
+      "get": {
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "default": 40,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "roundId": {
+                        "type": "number"
+                      },
+                      "roundName": {
+                        "type": "string"
+                      },
+                      "itemId": {
+                        "type": "number"
+                      },
+                      "itemName": {
+                        "type": "string"
+                      },
+                      "category": {
+                        "type": "string",
+                        "enum": [
+                          "GEAR",
+                          "CARD",
+                          "RELIC"
+                        ]
+                      },
+                      "memberId": {
+                        "type": "string"
+                      },
+                      "queuePos": {
+                        "nullable": true,
+                        "type": "number"
+                      },
+                      "wonAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "roundId",
+                      "roundName",
+                      "itemId",
+                      "itemName",
+                      "category",
+                      "memberId",
+                      "queuePos",
+                      "wonAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auctions/rounds/{id}/preferences/me": {
       "put": {
         "tags": [

@@ -605,6 +605,7 @@ Plan response:
 | GET | /auctions/queues | A | Per category `{length, myRank or null, entries:[{rank, memberId}]}` |
 | PUT | /auctions/queues/:category/me | A | Join (idempotent). Category is GEAR, CARD or RELIC. |
 | DELETE | /auctions/queues/:category/me | A | Leave |
+| GET | /auctions/queues/history?limit= | A | Queue wins across rounds (limit 1-100, default 40): newest round first, items in round order. `{roundId, roundName, itemId, itemName, category, memberId, queuePos, wonAt}` |
 | PUT | /auctions/rounds/:id/preferences/me | A | `{itemIds:[ordered]}` replaces the whole list; `[]` clears it. Ranks are dense over the whole list (no per-category contiguity is enforced; the UI orders within a category). |
 | GET | /auctions/rounds/:id/preferences/me | A | Own list only |
 
@@ -618,6 +619,7 @@ Plan response:
 | POST | /admin/auctions/rounds/:id/close | Early close under the round `FOR UPDATE` lock. Sets `status = CLOSED` and `closesAt = clock_timestamp()` in one statement (type 2 then allocates). No extension of a running round. |
 | POST | /admin/auctions/rounds/:id/cancel | Cancel a draft or open round. The queue is unchanged. |
 | GET | /admin/auctions/rounds/:id/preferences | Type 2: all members' lists |
+| DELETE | /admin/auctions/queues/:category/:memberId | Remove a member from one queue (idempotent, same effect as leaving; audited as `queue.remove`) |
 | GET | /admin/notifications?status=&eventType=&cursor=&limit= | Outbox view with counts by status; payload shown without more PII than names and ids |
 | POST | /admin/notifications/:id/retry | DEAD or PENDING back to PENDING now |
 | GET | /admin/audit-log?cursor=&limit=&actor=&action=&from=&to= | Read-only audit view |

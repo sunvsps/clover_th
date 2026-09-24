@@ -227,6 +227,19 @@ export const routes: RouteSpec[] = [
     url: '/api/v1/auctions/queues/PET/me',
     auth: 'member',
   },
+  // Queue page (admin remove, history)
+  {
+    method: 'DELETE',
+    pattern: '/api/v1/admin/auctions/queues/:category/:memberId',
+    url: `/api/v1/admin/auctions/queues/PET/${NIL}`,
+    auth: 'admin',
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/auctions/queues/history',
+    url: '/api/v1/auctions/queues/history',
+    auth: 'member',
+  },
   {
     method: 'PUT',
     pattern: '/api/v1/auctions/rounds/:id/preferences/me',
