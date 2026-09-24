@@ -1,0 +1,18 @@
+# Railway service config for this repo's single-container deploy (see the Dockerfile at the repo root and the
+# "Deploy เวอร์ชันทดลอง (staging) บน Railway" section of README.md). Railway auto-detects a root Dockerfile with
+# builder = "DOCKERFILE"; the fields below just make that explicit and set the health check.
+#
+# NOT covered here: the Pre-Deploy Command (`cd backend && node dist/prisma/../src/... `, see README) is a
+# per-service setting in the Railway dashboard (Settings -> Deploy -> Pre-Deploy Command). This Railway CLI config
+# version has no [deploy] field for it, so it is documented in README.md instead, not set here.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# No startCommand: the Dockerfile's CMD (`node dist/src/server.js`) runs the compiled server directly.

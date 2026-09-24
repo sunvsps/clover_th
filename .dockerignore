@@ -1,0 +1,32 @@
+# Rebuilt inside the image; never copy host artifacts in.
+**/node_modules
+**/dist
+**/dist-ssr
+**/build
+**/coverage
+**/.turbo
+
+# VCS / editor / agent state
+.git
+.github
+.claude
+**/*.log
+.DS_Store
+
+# Secrets and local env (never needed inside the image; env vars are injected at runtime instead)
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Docs and non-runtime content (not needed to build or run the containers)
+docs/
+*.md
+
+# Test artifacts / local tooling that never belongs in the image
+**/test-results
+**/.vitest-cache
+**/*.tsbuildinfo
+backend/test
+frontend/src/**/*.test.ts
+frontend/src/**/*.test.tsx
