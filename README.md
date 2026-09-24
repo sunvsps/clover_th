@@ -130,7 +130,7 @@ document.cookie = "session=<ค่าที่ได้>; path=/"
 
 ## Deploy เวอร์ชันทดลอง (staging) บน Railway
 
-> **สถานะ:** ขั้นตอนนี้เขียนจากความรู้ทั่วไปเกี่ยวกับ Railway ยังไม่ได้ทดลอง deploy จริง ชื่อเมนูอาจต่างเล็กน้อย และยังไม่มี `Dockerfile` ใน repo (คำสั่ง build ในขั้น 3 จึงยังไม่ได้ทดสอบบน Railway) รายละเอียดตัวแปรและ backup ดู [docs/deploy.md](docs/deploy.md)
+> **สถานะ:** repo มี `Dockerfile` ที่ build ทั้ง frontend และ backend เป็น container เดียวแล้ว (ทดสอบจริงแล้วในเครื่อง: `docker build` สำเร็จ, `prisma migrate deploy` และ seed รันผ่าน, container ตอบ `/healthz` และหน้าเว็บได้ปกติ, `/docs/json` เป็น 404 ตาม production) ส่วนขั้นตอนกดในหน้าเว็บ Railway เองยังไม่เคยลองจริง ชื่อเมนูอาจต่างเล็กน้อย รายละเอียดตัวแปรและ backup ดู [docs/deploy.md](docs/deploy.md)
 
 ข้อควรรู้ก่อนเริ่ม
 
@@ -147,12 +147,13 @@ New Project แล้ว Deploy from GitHub repo เลือก `sunvsps/cover_
 
 **3. ตั้ง build และ start** (Settings ของเซอร์วิส)
 
-- Build Command: build frontend (`npm ci` และ `npm run build` ใน `frontend/`) แล้ว build backend (`npm ci`, `npx prisma generate`, `npm run build` ใน `backend/`)
-- Start Command: `cd backend && node dist/src/server.js`
-- Pre-deploy Command: `cd backend && npx prisma migrate deploy && npm run db:seed`
-- Healthcheck Path: `/healthz`
+Railway จะเจอ `Dockerfile` ที่ root ของ repo เองอัตโนมัติ (มีไฟล์ `railway.toml` กำกับไว้แล้วว่าให้ build ด้วย Dockerfile และเช็ก `/healthz`) ไม่ต้องตั้ง Build/Start Command เอง เหลือแค่ตั้ง **Pre-Deploy Command** ที่ Settings → Deploy ของเซอร์วิส:
 
-`db:seed` (ไม่มี `--dev`) สร้างอาชีพ กิจกรรม และผังทีมเริ่มต้น รันซ้ำได้ไม่เกิดข้อมูลซ้ำ
+```
+npx prisma migrate deploy && node dist/prisma/seed.js
+```
+
+(สคริปต์ seed ถูก build เป็น JS แล้วในอิมเมจ ไม่ต้องใช้ `tsx`) `node dist/prisma/seed.js` แบบไม่มี `--dev` สร้างอาชีพ กิจกรรม และผังทีมเริ่มต้น รันซ้ำได้ไม่เกิดข้อมูลซ้ำ Healthcheck Path ถูกตั้งไว้ใน `railway.toml` แล้วเป็น `/healthz`
 
 **4. สร้างโดเมน**
 Settings แล้ว Networking แล้ว Generate Domain (ได้ HTTPS อัตโนมัติ) แล้วนำโดเมนไปใส่ Redirect ของ Discord ในขั้น 1
