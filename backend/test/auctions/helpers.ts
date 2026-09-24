@@ -94,6 +94,13 @@ export const queueApi = (w: World) => ({
   leave: (h: H, category: string) =>
     w.app.inject({ method: 'DELETE', url: `/api/v1/auctions/queues/${category}/me`, headers: h }),
   queues: (h: H) => w.app.inject({ url: '/api/v1/auctions/queues', headers: h }),
+  remove: (h: H, category: string, memberId: string) =>
+    w.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/auctions/queues/${category}/${memberId}`,
+      headers: h,
+    }),
+  history: (h: H, q = '') => w.app.inject({ url: `/api/v1/auctions/queues/history${q}`, headers: h }),
   setPrefs: (h: H, roundId: number, itemIds: number[]) =>
     w.app.inject({
       method: 'PUT',

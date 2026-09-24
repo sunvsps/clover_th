@@ -12,11 +12,11 @@ async function renderApp(me: Me | null = meAdmin) {
 }
 
 describe("App shell", () => {
-  it("renders the top bar, the three feature tabs and the auction page", async () => {
+  it("renders the top bar, the feature tabs and the auction page", async () => {
     await renderApp();
     expect(screen.getByLabelText("Clover TH home")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Guild tools" });
-    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Schedule", "Team planner", "Admin"]);
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Auction queue", "Schedule", "Team planner", "Admin"]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guild item auction");
     expect(await screen.findByText(/no auction round yet/i)).toBeInTheDocument();
   });
@@ -24,6 +24,9 @@ describe("App shell", () => {
   it("the tabs switch views and keep the URL hash in step; the auction page stays mounted but hidden", async () => {
     const user = userEvent.setup({ delay: null });
     await renderApp();
+    await user.click(screen.getByRole("button", { name: "Auction queue" }));
+    expect(window.location.hash).toBe("#queue");
+    expect(await screen.findByTestId("queue-page")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Schedule" }));
     expect(window.location.hash).toBe("#calendar");
     expect(document.getElementById("top")).toHaveClass("hidden-view");

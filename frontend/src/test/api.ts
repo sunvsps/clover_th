@@ -50,6 +50,7 @@ export function mockApi({ me = meAdmin }: { me?: Me | null } = {}) {
     http.get("*/api/v1/registrations", () => HttpResponse.json({ from: "", to: "", serverTime: new Date().toISOString(), occurrences: {} })),
     http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [] })),
     http.get("*/api/v1/auctions/queues", () => HttpResponse.json([])),
+    http.get("*/api/v1/auctions/queues/history", () => HttpResponse.json([])),
     // the demo login is off on a normal backend: a plain 404
     http.get("*/api/v1/demo/members", () => HttpResponse.json({ error: { code: "NOT_FOUND", message: "x", details: {} } }, { status: 404 })),
     http.post("*/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
@@ -310,7 +311,9 @@ export type FakeRound = {
  * In-memory stand-in for the auction API (rounds with ETag/304, claim/release with the real error codes, results,
  * queues, own preferences). `serverNow` is the server's clock; the browser clock may be set to anything else.
  */
-export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () => number; queues?: Record<string, string[]> }) {
+export type FakeQueueWin = { roundId: number; roundName: string; itemId: number; itemName: string; category: "GEAR" | "CARD" | "RELIC"; memberId: string; queuePos: number | null; wonAt: string };
+
+export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () => number; queues?: Record<string, string[]>; history?: FakeQueueWin[] }) {
   const rounds = new Map(opts.rounds.map((r) => [r.id, r]));
   const queues: Record<string, string[]> = { GEAR: [], CARD: [], RELIC: [], ...opts.queues };
   const prefs = new Map<number, number[]>();
@@ -383,6 +386,18 @@ export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () 
         Object.entries(queues).map(([category, ids]) => ({ category, length: ids.length, myRank: ids.indexOf(opts.me.memberId) >= 0 ? ids.indexOf(opts.me.memberId) + 1 : null, entries: ids.map((memberId, i) => ({ rank: i + 1, memberId })) })),
       ),
     ),
+    http.get("*/api/v1/auctions/queues/history", ({ request }) => {
+      calls.push({ method: "GET", path: new URL(request.url).pathname + new URL(request.url).search });
+      return HttpResponse.json(opts.history ?? []);
+    }),
+    http.delete("*/api/v1/admin/auctions/queues/:category/:memberId", ({ params, request }) => {
+      calls.push({ method: "DELETE", path: new URL(request.url).pathname });
+      if (!opts.me.isAdmin) return err("FORBIDDEN", 403);
+      const q = queues[String(params.category)]!;
+      const i = q.indexOf(String(params.memberId));
+      if (i >= 0) q.splice(i, 1);
+      return HttpResponse.json({ category: params.category, length: q.length, myRank: null });
+    }),
     http.put("*/api/v1/auctions/queues/:category/me", ({ params, request }) => {
       calls.push({ method: "PUT", path: new URL(request.url).pathname });
       const q = queues[String(params.category)]!;

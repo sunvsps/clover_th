@@ -1,4 +1,4 @@
-import { CalendarDays, Check, Package, Shield, Users, X } from "lucide-react";
+import { CalendarDays, Check, ListOrdered, Package, Shield, Users, X } from "lucide-react";
 import { getMembers, type GuildData } from "../api";
 import WeeklySchedule from "../components/WeeklySchedule";
 import TeamPlanner from "../components/TeamPlanner";
@@ -7,6 +7,7 @@ import { useHashView } from "../hooks/useHashView";
 import type { Session } from "../hooks/useSession";
 import AdminView from "./AdminView";
 import AuctionView from "./AuctionView";
+import QueueView from "./QueueView";
 import TopBar from "./TopBar";
 
 type Props = {
@@ -47,6 +48,9 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         <button className={activeView === "auction" ? "active" : ""} type="button" onClick={() => setActiveView("auction")}>
           <Package size={15} /> {isThai ? "ประมูลไอเท็ม" : "Auction"}
         </button>
+        <button className={activeView === "queue" ? "active" : ""} type="button" onClick={() => setActiveView("queue")}>
+          <ListOrdered size={15} /> {isThai ? "จองคิวประมูล" : "Auction queue"}
+        </button>
         <button className={activeView === "calendar" ? "active" : ""} type="button" onClick={() => setActiveView("calendar")}>
           <CalendarDays size={15} /> {isThai ? "ตารางกิจกรรม" : "Schedule"}
         </button>
@@ -69,6 +73,19 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         notify={notify}
       />
 
+      {activeView === "queue" && (
+        <div className="feature-content">
+          <QueueView
+            isThai={isThai}
+            isAdmin={session.isAdmin}
+            memberId={session.memberId}
+            members={guild.members}
+            jobs={guild.jobs}
+            notify={notify}
+            onGoToAuction={() => setActiveView("auction")}
+          />
+        </div>
+      )}
       {activeView === "calendar" && (
         <div className="feature-content">
           <WeeklySchedule

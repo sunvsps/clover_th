@@ -110,6 +110,18 @@ export async function getQueues(): Promise<Queue[]> {
 }
 export const joinQueue = (category: Category) => put<{ category: string; length: number; myRank: number | null }>(`/api/v1/auctions/queues/${categoryToWire(category)}/me`);
 export const leaveQueue = (category: Category) => del<{ category: string; length: number; myRank: number | null }>(`/api/v1/auctions/queues/${categoryToWire(category)}/me`);
+/** Admin: take a member out of one queue (same effect as that member leaving). */
+export const removeFromQueue = (category: Category, memberId: string) =>
+  del<{ category: string; length: number; myRank: number | null }>(`/api/v1/admin/auctions/queues/${categoryToWire(category)}/${encodeURIComponent(memberId)}`);
+
+type WireQueueWin = Ok<"/api/v1/auctions/queues/history", "get">[number];
+/** One item won through queue allocation. */
+export type QueueWin = Omit<WireQueueWin, "category"> & { category: Category };
+/** Queue wins across rounds: newest round first, items in round order. */
+export async function getQueueHistory(limit = 40): Promise<QueueWin[]> {
+  const rows = await get<WireQueueWin[]>(`/api/v1/auctions/queues/history?limit=${limit}`);
+  return rows.map((r) => ({ ...r, category: categoryFromWire(r.category) }));
+}
 
 export const getMyPreferences = async (roundId: number) => (await get<{ itemIds: number[] }>(`/api/v1/auctions/rounds/${roundId}/preferences/me`)).itemIds;
 /** A 200 means the list is stored (and will be part of the allocation). */

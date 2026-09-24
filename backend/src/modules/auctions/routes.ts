@@ -11,7 +11,14 @@ import {
   readMyPreferences,
   submitPreferences,
 } from './preferences.js';
-import { joinQueue, leaveQueue, parseCategory, readQueues } from './queue.js';
+import {
+  joinQueue,
+  leaveQueue,
+  parseCategory,
+  readQueueHistory,
+  readQueues,
+  removeFromQueue,
+} from './queue.js';
 import {
   cancelRound,
   closeRound,
@@ -452,6 +459,51 @@ export default async function auctionRoutes(app: FastifyInstance) {
     async (req) => {
       const category = parseCategory(req.params.category);
       return app.tx((tx) => leaveQueue(tx, category, req.auth!.memberId, req.id));
+    },
+  );
+
+  r.delete(
+    '/api/v1/admin/auctions/queues/:category/:memberId',
+    {
+      schema: {
+        tags: ['auctions'],
+        params: categoryParam.extend({ memberId: z.uuid() }),
+        response: { 200: queueOut },
+      },
+      onRequest: [requireAdmin],
+    },
+    async (req) => {
+      const category = parseCategory(req.params.category);
+      return app.tx((tx) => removeFromQueue(tx, category, req.params.memberId, req.auth!.memberId, req.id));
+    },
+  );
+
+  r.get(
+    '/api/v1/auctions/queues/history',
+    {
+      schema: {
+        tags: ['auctions'],
+        querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(40) }),
+        response: {
+          200: z.array(
+            z.object({
+              roundId: z.number(),
+              roundName: z.string(),
+              itemId: z.number(),
+              itemName: z.string(),
+              category: z.enum(['GEAR', 'CARD', 'RELIC']),
+              memberId: z.string(),
+              queuePos: z.number().nullable(),
+              wonAt: z.string(),
+            }),
+          ),
+        },
+      },
+      onRequest: [requireAuth],
+    },
+    async (req) => {
+      await lazyFinalize();
+      return readQueueHistory(app.prisma, req.query.limit);
     },
   );
 

@@ -87,6 +87,54 @@ export async function leaveQueue(tx: Tx, category: QueueCategory, memberId: stri
   return queueSummary(tx, category, memberId);
 }
 
+/** Admin removes a member from one queue (idempotent). Same effect as that member leaving, audited to the admin. */
+export async function removeFromQueue(
+  tx: Tx,
+  category: QueueCategory,
+  memberId: string,
+  adminId: string,
+  requestId?: string,
+) {
+  await categoryLocks(tx, [category]);
+  const gone = await tx.$queryRaw<{ id: number }[]>`
+    DELETE FROM "QueueEntry" WHERE category = ${category}::"ItemCategory" AND "memberId" = ${memberId}::uuid RETURNING id`;
+  if (gone.length > 0) {
+    await record(tx, {
+      actorType: 'MEMBER',
+      actorId: adminId,
+      action: 'queue.remove',
+      entityType: 'queue',
+      entityId: category,
+      meta: { memberId, entryId: gone[0]!.id },
+      requestId,
+    });
+  }
+  return queueSummary(tx, category, memberId);
+}
+
+export type QueueWin = {
+  roundId: number;
+  roundName: string;
+  itemId: number;
+  itemName: string;
+  category: QueueCategory;
+  memberId: string;
+  queuePos: number | null;
+  wonAt: string;
+};
+
+/** Items won through queue allocation across all rounds: newest round first, items in round order. */
+export async function readQueueHistory(db: Db, limit: number): Promise<QueueWin[]> {
+  const rows = await db.$queryRaw<(Omit<QueueWin, 'wonAt'> & { wonAt: Date })[]>`
+    SELECT r.id AS "roundId", r.name AS "roundName", i.id AS "itemId", i.name AS "itemName", i.category::text AS category,
+           i."winnerId"::text AS "memberId", i."queuePos", i."wonAt"
+    FROM "AuctionItem" i JOIN "AuctionRound" r ON r.id = i."roundId"
+    WHERE i."winSource" = 'ALLOCATION' AND i."winnerId" IS NOT NULL
+    ORDER BY r."closedAt" DESC NULLS LAST, r.id DESC, i."sortOrder", i.id
+    LIMIT ${limit}`;
+  return rows.map((r) => ({ ...r, wonAt: r.wonAt.toISOString() }));
+}
+
 async function queueSummary(tx: Tx, category: QueueCategory, memberId: string) {
   const q = (await readQueues(tx, memberId)).find((x) => x.category === category)!;
   return { category, length: q.length, myRank: q.myRank };
