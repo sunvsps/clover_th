@@ -12,6 +12,7 @@ expected=(
   'CONSTRAINT "round_wincap_only_live_claim" CHECK'
   'CONSTRAINT "item_winner_matches_wonat" CHECK'
   'CREATE UNIQUE INDEX "job_label_ci" ON "Job" (lower(normalize("label", NFC)))'
+  'CONSTRAINT "party_slot_positive" CHECK'
 )
 ls "$dir"/*_raw_constraints/migration.sql >/dev/null
 status=0

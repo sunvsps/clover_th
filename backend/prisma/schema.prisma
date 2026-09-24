@@ -112,6 +112,7 @@ model Member {
   preferences   Preference[]
   snapshots     RoundQueueSnapshot[]
   notifications NotificationOutbox[]
+  partyMember   PartyMember?
   // RAW SQL: member_ign_active unique index on lower(normalize(ign, NFC)) WHERE "isActive"
 }
 
@@ -223,6 +224,21 @@ model Placement {
 
   @@unique([occurrenceId, memberId])
   @@unique([occurrenceId, teamId, slot])
+  // RAW SQL: CHECK (slot >= 1)
+}
+
+/**
+ * "Regular parties": members who always play together, grouped into a numbered slot so the team
+ * planner can place the whole group in one action. No name/color is stored — the slot number is
+ * the only identity, and the UI derives a label and a color from it, so there is nothing to rename
+ * or keep in sync. A member is in at most one party at a time (dragging into a new slot moves them).
+ */
+model PartyMember {
+  memberId String @id @db.Uuid
+  slot     Int
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([slot])
   // RAW SQL: CHECK (slot >= 1)
 }
 

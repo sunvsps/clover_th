@@ -1,4 +1,4 @@
-import { BarChart3, Pencil } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import type { GuildMember, Job } from "../data/guild";
 import JobChart from "./JobChart";
 
@@ -7,12 +7,10 @@ type Props = {
   members: GuildMember[];
   assignments: Record<string, string>;
   isThai: boolean;
-  canEdit: boolean;
-  onEditJobs: () => void;
 };
 
-/** "Members per job" card of the team planner: title, member count, the bar chart, and the admin "Edit jobs" link. */
-export default function JobChartCard({ jobs, members, assignments, isThai, canEdit, onEditJobs }: Props) {
+/** "Members per job" card of the team planner: title, member count and the bar chart. Job names/colors are managed from Admin > Jobs. */
+export default function JobChartCard({ jobs, members, assignments, isThai }: Props) {
   return (
     <div className="chart-card">
       <div className="pool-title">
@@ -21,11 +19,6 @@ export default function JobChartCard({ jobs, members, assignments, isThai, canEd
         </strong>
         <span className="chart-card-meta">
           {members.length} {isThai ? "คน" : "members"}
-          {canEdit && (
-            <button type="button" className="inline-edit-button" onClick={onEditJobs}>
-              <Pencil size={11} /> {isThai ? "แก้ชื่อ / สีอาชีพ" : "Edit jobs"}
-            </button>
-          )}
         </span>
       </div>
       <JobChart jobs={jobs} members={members} assignments={assignments} isThai={isThai} />
