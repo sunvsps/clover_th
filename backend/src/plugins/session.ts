@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import type { Env } from '../config/env.js';
+import { secureCookie } from '../lib/cookies.js';
 import { isStaticRequest } from '../lib/staticPaths.js';
 import type { Tx } from '../lib/tx.js';
 import type { AuthContext } from '../types.js';
@@ -31,14 +32,20 @@ type Row = {
  * Creates a session and sets the cookie. Expiry is computed DB-side (clock_timestamp()).
  * The cookie holds a random token; the DB stores only its sha256 as the session id.
  */
-export async function startSession(tx: Tx, env: Env, reply: FastifyReply, memberId: string) {
+export async function startSession(
+  tx: Tx,
+  env: Env,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  memberId: string,
+) {
   const token = randomBytes(32).toString('base64url');
   await tx.$executeRaw`INSERT INTO "Session" (id, "memberId", "expiresAt")
     VALUES (${hashToken(token)}, ${memberId}::uuid,
             clock_timestamp() + make_interval(days => ${env.SESSION_SLIDING_DAYS}::int))`;
   reply.setCookie(sessionCookieName(env), token, {
     httpOnly: true,
-    secure: true,
+    secure: secureCookie(request),
     sameSite: 'lax',
     path: '/',
     maxAge: env.SESSION_SLIDING_DAYS * 86400,
@@ -50,7 +57,7 @@ export async function endSession(request: FastifyRequest, reply: FastifyReply) {
   reply.clearCookie(sessionCookieName(request.server.env), {
     path: '/',
     httpOnly: true,
-    secure: true,
+    secure: secureCookie(request),
     sameSite: 'lax',
   });
 }

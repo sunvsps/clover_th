@@ -6,6 +6,7 @@ import { record } from '../../lib/audit.js';
 import { AppError, errors } from '../../lib/errors.js';
 import { safeString } from '../../lib/text.js';
 import { endSession, startSession } from '../../plugins/session.js';
+import { secureCookie } from '../../lib/cookies.js';
 import { requireAuth } from '../../plugins/requireAdmin.js';
 import { exchangeCode, fetchDiscordUserId } from './discord.js';
 import { STATE_COOKIE, STATE_COOKIE_PATH, STATE_TTL_MS, consumeNonce, newNonce } from './oauthState.js';
@@ -38,12 +39,12 @@ export default async function authRoutes(app: FastifyInstance) {
   r.get(
     '/api/v1/auth/discord/login',
     { schema: { tags: ['auth'] }, config: authLimit },
-    async (_req, reply) => {
+    async (req, reply) => {
       const nonce = newNonce();
       reply.setCookie(STATE_COOKIE, `${nonce}.${Date.now()}`, {
         signed: true,
         httpOnly: true,
-        secure: true,
+        secure: secureCookie(req),
         sameSite: 'lax',
         path: STATE_COOKIE_PATH,
         maxAge: STATE_TTL_MS / 1000,
@@ -77,7 +78,7 @@ export default async function authRoutes(app: FastifyInstance) {
       reply.clearCookie(STATE_COOKIE, {
         path: STATE_COOKIE_PATH,
         httpOnly: true,
-        secure: true,
+        secure: secureCookie(req),
         sameSite: 'lax',
       });
 
@@ -109,7 +110,7 @@ export default async function authRoutes(app: FastifyInstance) {
       if (!member.isActive) return reply.redirect(frontend({ authError: 'AUTH_MEMBER_INACTIVE' }), 302);
 
       await app.tx(async (tx) => {
-        await startSession(tx, env, reply, member.id);
+        await startSession(tx, env, req, reply, member.id);
         await record(tx, {
           actorType: 'MEMBER',
           actorId: member.id,

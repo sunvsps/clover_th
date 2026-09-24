@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { record } from '../../lib/audit.js';
 import { assertDevLoginAllowed } from '../../lib/devLogin.js';
 import { AppError, errors } from '../../lib/errors.js';
+import { secureCookie } from '../../lib/cookies.js';
 import { sessionCookieName } from '../../plugins/session.js';
 
 const DEMO_HOURS = 8; // like scripts/dev-login.ts
@@ -124,7 +125,7 @@ export default async function demoRoutes(app: FastifyInstance) {
         httpOnly: true,
         // The cookie the OAuth login sets is Secure. This route only answers loopback, i.e. http://localhost, where
         // Safari refuses Secure cookies; it is marked Secure only when the request really came in over https.
-        secure: req.protocol === 'https',
+        secure: secureCookie(req),
         sameSite: 'lax',
         path: '/',
         maxAge: DEMO_HOURS * 3600,

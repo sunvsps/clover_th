@@ -43,7 +43,11 @@ describe('OAuth login', () => {
     expect(u.searchParams.get('client_id')).toBe('test-client-id');
     expect(u.searchParams.get('state')).toMatch(/^[0-9a-f]{32}$/);
     const c = res.cookies.find((x) => x.name === 'oauth_state')!;
-    expect(c).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });
+    // app.inject is plain http (no TLS, no trusted X-Forwarded-Proto): Secure must be OFF, or Safari silently drops
+    // the cookie and every login looks like AUTH_STATE_INVALID (the bug this guards against). set-cookie-parser
+    // omits the `secure` key entirely when the attribute is absent from the header, so it must be undefined here.
+    expect(c).toMatchObject({ httpOnly: true, sameSite: 'Lax' });
+    expect(c.secure).toBeUndefined();
   });
 
   it('registered member: callback sets a cookie, redirects to the frontend, and /me returns the profile', async () => {
@@ -52,7 +56,9 @@ describe('OAuth login', () => {
     expect(cb.statusCode).toBe(302);
     expect(cb.headers.location).toBe(`${FRONTEND}/`);
     const sc = cb.cookies.find((c) => c.name === 'session')!;
-    expect(sc).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax', path: '/' });
+    // same reasoning as the state cookie above: plain http here, so no Secure attribute (undefined, see note above)
+    expect(sc).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/' });
+    expect(sc.secure).toBeUndefined();
     expect(sc.maxAge).toBe(30 * 86400);
 
     const me = await app.inject({ url: '/api/v1/me', headers: { cookie: cookie! } });
@@ -206,6 +212,67 @@ describe('OAuth login', () => {
     expect(text).not.toContain('test-client-secret-value');
     expect(text).not.toContain(cookie!.replace('session=', ''));
     expect(text).not.toMatch(/tok-code/);
+  });
+});
+
+describe('Secure cookie attribute follows the request protocol (never hardcoded)', () => {
+  // TRUST_PROXY_HOPS=1 lets a trusted X-Forwarded-Proto decide req.protocol (same mechanism test/security/fixes.test.ts
+  // uses for X-Forwarded-For), simulating a TLS-terminating reverse proxy without needing a real HTTPS socket.
+  const https = { remoteAddress: '10.0.0.1', headers: { 'x-forwarded-proto': 'https' } };
+
+  it('plain http: the OAuth state cookie has no Secure attribute', async () => {
+    const res = await app.inject({ url: '/api/v1/auth/discord/login' });
+    expect(res.cookies.find((c) => c.name === 'oauth_state')!.secure).toBeUndefined();
+  });
+
+  it('a request behind a trusted TLS-terminating proxy: the state cookie IS Secure', async () => {
+    const proxied = await createTestApp(db, { mock, env: { TRUST_PROXY_HOPS: '1' } });
+    await proxied.ready();
+    try {
+      const res = await proxied.inject({ url: '/api/v1/auth/discord/login', ...https });
+      expect(res.cookies.find((c) => c.name === 'oauth_state')).toMatchObject({ secure: true });
+    } finally {
+      await proxied.close();
+    }
+  });
+
+  it('plain http end to end: the OAuth callback session cookie has no Secure attribute, and /me still works with it', async () => {
+    await mk('232323232');
+    const { cb, cookie } = await loginAs(app, mock, '232323232');
+    expect(cb.cookies.find((c) => c.name === 'session')!.secure).toBeUndefined();
+    const me = await app.inject({ url: '/api/v1/me', headers: { cookie: cookie! } });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().discordId).toBe('232323232');
+  });
+
+  it('behind a trusted TLS-terminating proxy the session cookie IS Secure, and logout clears it the same way', async () => {
+    await mk('242424242');
+    const proxied = await createTestApp(db, { mock, env: { TRUST_PROXY_HOPS: '1' } });
+    await proxied.ready();
+    try {
+      const login = await proxied.inject({ url: '/api/v1/auth/discord/login', ...https });
+      const state = new URL(login.headers.location as string).searchParams.get('state')!;
+      const stateCookie = login.cookies.find((c) => c.name === 'oauth_state')!.value;
+      const code = 'code-secure-1';
+      mock.registerCode(code, '242424242');
+      const cb = await proxied.inject({
+        url: `/api/v1/auth/discord/callback?code=${code}&state=${state}`,
+        cookies: { oauth_state: stateCookie },
+        ...https,
+      });
+      expect(cb.cookies.find((c) => c.name === 'session')).toMatchObject({ secure: true });
+      const sessionCookie = `session=${cb.cookies.find((c) => c.name === 'session')!.value}`;
+      const out = await proxied.inject({
+        method: 'POST',
+        url: '/api/v1/auth/logout',
+        remoteAddress: https.remoteAddress,
+        headers: { cookie: sessionCookie, ...CSRF, ...https.headers },
+      });
+      expect(out.statusCode).toBe(204);
+      expect(out.cookies.find((c) => c.name === 'session')).toMatchObject({ secure: true });
+    } finally {
+      await proxied.close();
+    }
   });
 });
 
