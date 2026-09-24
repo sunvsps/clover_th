@@ -113,6 +113,7 @@ model Member {
   snapshots     RoundQueueSnapshot[]
   notifications NotificationOutbox[]
   partyMember   PartyMember?
+  complaints    Complaint[]
   // RAW SQL: member_ign_active unique index on lower(normalize(ign, NFC)) WHERE "isActive"
 }
 
@@ -359,6 +360,19 @@ model NotificationOutbox {
 
   @@index([status, nextAttemptAt])
   @@index([entityType, entityId])
+}
+
+// ---------- Complaints ----------
+model Complaint {
+  id          Int      @id @default(autoincrement())
+  memberId    String   @db.Uuid
+  member      Member   @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  title       String
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([memberId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
 }
 
 // ---------- Audit ----------

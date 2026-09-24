@@ -6,6 +6,7 @@ export * from "./errors";
 export * from "./serverClock";
 export * from "./usePolling";
 export * from "./registrations";
+export * from "./complaints";
 export * from "./planner";
 export * from "./auctions";
 export * from "./admin";

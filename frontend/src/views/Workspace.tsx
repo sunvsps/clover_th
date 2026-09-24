@@ -1,4 +1,4 @@
-import { CalendarDays, Check, ListOrdered, Package, Shield, Users, X } from "lucide-react";
+import { CalendarDays, Check, ListOrdered, MessageSquareWarning, Package, Shield, Users, X } from "lucide-react";
 import { getMembers, type GuildData } from "../api";
 import WeeklySchedule from "../components/WeeklySchedule";
 import TeamPlanner from "../components/TeamPlanner";
@@ -7,6 +7,7 @@ import { useHashView } from "../hooks/useHashView";
 import type { Session } from "../hooks/useSession";
 import AdminView from "./AdminView";
 import AuctionView from "./AuctionView";
+import ComplaintView from "./ComplaintView";
 import QueueView from "./QueueView";
 import TopBar from "./TopBar";
 
@@ -56,6 +57,9 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         </button>
         <button className={activeView === "teams" ? "active" : ""} type="button" onClick={() => setActiveView("teams")}>
           <Users size={15} /> {isThai ? "จัดทีมกิลด์" : "Team planner"}
+        </button>
+        <button className={activeView === "complaint" ? "active" : ""} type="button" onClick={() => setActiveView("complaint")}>
+          <MessageSquareWarning size={15} /> {isThai ? "ร้องทุกข์" : "Complaint"}
         </button>
         {session.isAdmin && (
           <button className={activeView === "admin" ? "active" : ""} type="button" onClick={() => setActiveView("admin")}>
@@ -111,6 +115,11 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
             activities={guild.activities}
             onNotice={notify}
           />
+        </div>
+      )}
+      {activeView === "complaint" && (
+        <div className="feature-content">
+          <ComplaintView isThai={isThai} notify={notify} />
         </div>
       )}
       {activeView === "admin" && session.isAdmin && (
