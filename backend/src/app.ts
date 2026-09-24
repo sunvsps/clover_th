@@ -19,6 +19,7 @@ import auctionRoutes from './modules/auctions/routes.js';
 import auditRoutes from './modules/audit/routes.js';
 import authRoutes from './modules/auth/routes.js';
 import botRoutes from './modules/bot/routes.js';
+import complaintRoutes from './modules/complaints/routes.js';
 import eventRoutes from './modules/events/routes.js';
 import healthRoutes from './modules/health/routes.js';
 import jobRoutes from './modules/jobs/routes.js';
@@ -171,6 +172,7 @@ export async function buildApp(opts: BuildOptions) {
   await app.register(registrationRoutes);
   await app.register(plannerRoutes);
   await app.register(auctionRoutes);
+  await app.register(complaintRoutes);
 
   return app;
 }

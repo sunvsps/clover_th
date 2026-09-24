@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 
-export type GuildView = "auction" | "queue" | "calendar" | "teams" | "admin";
+export type GuildView = "auction" | "queue" | "calendar" | "teams" | "complaint" | "admin";
 
 export function viewFromHash(): GuildView {
   const hash = window.location.hash.replace("#", "");
-  return hash === "queue" || hash === "calendar" || hash === "teams" || hash === "admin" ? hash : "auction";
+  return hash === "queue" || hash === "calendar" || hash === "teams" || hash === "complaint" || hash === "admin"
+    ? hash
+    : "auction";
 }
 
 /** Active feature view kept in sync with the URL hash (back/forward buttons included). */

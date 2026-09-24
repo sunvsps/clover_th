@@ -16,7 +16,7 @@ describe("App shell", () => {
     await renderApp();
     expect(screen.getByLabelText("Clover TH home")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Guild tools" });
-    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Auction queue", "Schedule", "Team planner", "Admin"]);
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Auction queue", "Schedule", "Team planner", "Complaint", "Admin"]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guild item auction");
     expect(await screen.findByText(/no auction round yet/i)).toBeInTheDocument();
   });
