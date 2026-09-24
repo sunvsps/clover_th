@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { ArrowLeft, ArrowRight, Copy, CopyPlus, Eraser, Eye, GripVertical, Palette, RotateCcw, Search, TriangleAlert, Users, X } from "lucide-react";
+import { Copy, CopyPlus, Eraser, Eye, GripVertical, RotateCcw, Search, TriangleAlert, Users, X } from "lucide-react";
 import {
   clearPlan,
   copyFromPrevious,
@@ -14,10 +14,8 @@ import {
   type WireActivity,
 } from "../api";
 import { addDays, formatDay, startOfWeek, todayKey } from "../lib/bangkok";
-import { findJob, jobStyle, weekDayNames, type GuildMember, type Job, type ScheduleEvent } from "../data/guild";
+import { findJob, jobStyle, weekDayNames, weekDayShort, type GuildMember, type Job, type ScheduleEvent } from "../data/guild";
 import JobChartCard from "./JobChartCard";
-import JobManagerDialog from "./JobManagerDialog";
-import { useJobManager, type JobDraftEntry } from "../hooks/useJobManager";
 import { assignmentsOf, backfillText, flagText, planChangeNotices, planToText } from "./plannerModel";
 
 type Props = {
@@ -27,27 +25,45 @@ type Props = {
   members: GuildMember[];
   events: ScheduleEvent[];
   activities: WireActivity[];
-  /** saves the job list (PUT /admin/jobs); returns an error text or null */
-  onSaveJobs: (next: JobDraftEntry[]) => Promise<string | null>;
   onNotice: (message: string) => void;
 };
 
 const DRAG_KEY = "text/guild-member";
 const POLL_MS = 5000;
 
-export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, activities, onSaveJobs, onNotice }: Props) {
+export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, activities, onNotice }: Props) {
   const t = (en: string, th: string) => (isThai ? th : en);
-  const plannerIds = useMemo(() => new Set(activities.filter((a) => a.hasPlanner).map((a) => a.id)), [activities]);
+  const plannerActivities = useMemo(() => activities.filter((a) => a.hasPlanner), [activities]);
+  const plannerIds = useMemo(() => new Set(plannerActivities.map((a) => a.id)), [plannerActivities]);
   const plannerEvents = useMemo(
     () => events.filter((e) => plannerIds.has(e.activityId)).sort((a, b) => a.name.localeCompare(b.name) || a.day - b.day || a.start.localeCompare(b.start)),
     [events, plannerIds],
   );
   const dayNames = isThai ? weekDayNames.th : weekDayNames.en;
-  const occurrenceThisWeek = (event: ScheduleEvent) => addDays(startOfWeek(todayKey()), event.day);
+  const dayShort = isThai ? weekDayShort.th : weekDayShort.en;
 
-  const [eventId, setEventId] = useState(() => plannerEvents[0]?.id ?? "");
+  // This week's and the next two weeks' occurrences of every planner event, earliest first: the options of the
+  // single "Date" picker (day, date and time together), so there is nothing separate to keep in sync.
+  const WEEKS_AHEAD = 3;
+  const occurrences = useMemo(() => {
+    const weekStart = startOfWeek(todayKey());
+    const list: { event: ScheduleEvent; dateKey: string }[] = [];
+    for (let week = 0; week < WEEKS_AHEAD; week += 1) {
+      plannerEvents.forEach((e) => list.push({ event: e, dateKey: addDays(weekStart, week * 7 + e.day) }));
+    }
+    return list.sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.event.start.localeCompare(b.event.start));
+  }, [plannerEvents]);
+  /** The soonest occurrence today or later, or the most recent past one if the activity has none upcoming. */
+  const nextOccurrenceFor = (activityId: string) => {
+    const forActivity = occurrences.filter((o) => o.event.activityId === activityId);
+    return forActivity.find((o) => o.dateKey >= todayKey()) ?? forActivity[0];
+  };
+  const defaultOccurrence = occurrences.find((o) => o.dateKey >= todayKey()) ?? occurrences[0];
+
+  const [eventId, setEventId] = useState(() => defaultOccurrence?.event.id ?? "");
   const event = plannerEvents.find((e) => e.id === eventId);
-  const [date, setDate] = useState(() => (plannerEvents[0] ? occurrenceThisWeek(plannerEvents[0]) : todayKey()));
+  const [date, setDate] = useState(() => defaultOccurrence?.dateKey ?? todayKey());
+  const occurrencesForActivity = event ? occurrences.filter((o) => o.event.activityId === event.activityId) : [];
 
   const [picked, setPicked] = useState<string | null>(null);
   const [hoverTeam, setHoverTeam] = useState<number | "pool" | null>(null);
@@ -55,7 +71,6 @@ export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, ac
   const [addTo, setAddTo] = useState<{ teamId: number; query: string } | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [busy, setBusy] = useState(false);
-  const jobManager = useJobManager(jobs, onSaveJobs);
 
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
   const ignOf = (id: string) => byId.get(id)?.ign ?? (isThai ? "อดีตสมาชิก" : "Former member");
@@ -77,18 +92,20 @@ export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, ac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan]);
 
-  function selectEvent(id: string) {
-    const next = plannerEvents.find((e) => e.id === id);
+  function selectActivity(activityId: string) {
+    const next = nextOccurrenceFor(activityId);
     if (!next) return;
-    setEventId(id);
-    setDate(occurrenceThisWeek(next));
+    setEventId(next.event.id);
+    setDate(next.dateKey);
     setPicked(null);
     setConfirmClear(false);
     ownVersion.current = 0;
   }
-  function shiftDate(days: number) {
-    setDate((d) => addDays(d, days));
+  function pickOccurrence(id: string, dateKey: string) {
+    setEventId(id);
+    setDate(dateKey);
     setPicked(null);
+    setConfirmClear(false);
     ownVersion.current = 0;
   }
 
@@ -359,11 +376,6 @@ export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, ac
             <Copy size={14} /> {t("Copy plan", "คัดลอกรายชื่อทีม")}
           </button>
           {isAdmin && (
-            <button type="button" className="copy-button" onClick={jobManager.open}>
-              <Palette size={14} /> {t("Manage jobs", "จัดการอาชีพ")}
-            </button>
-          )}
-          {isAdmin && (
             <button
               type="button"
               className="copy-button"
@@ -392,28 +404,43 @@ export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, ac
         </div>
       </div>
 
+      <div className="auction-tabs" role="tablist" aria-label={t("Activity", "กิจกรรม")}>
+        {plannerActivities.map((a) => {
+          const active = event?.activityId === a.id;
+          return (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={active ? "active" : ""}
+              key={a.id}
+              onClick={() => selectActivity(a.id)}
+            >
+              {a.name}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="plan-toolbar">
         <label>
-          <span>{t("Activity", "กิจกรรม")}</span>
-          <select value={eventId} onChange={(e) => selectEvent(e.target.value)} aria-label={t("Activity", "กิจกรรม")}>
-            {plannerEvents.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name} · {dayNames[e.day]} {e.start}
+          <span>{t("Date", "วันที่")}</span>
+          <select
+            value={`${date}:${eventId}`}
+            onChange={(e) => {
+              const [dateKey, id] = e.target.value.split(":");
+              pickOccurrence(id!, dateKey!);
+            }}
+            aria-label={t("Date", "วันที่")}
+          >
+            {occurrencesForActivity.map((o) => (
+              <option key={`${o.dateKey}:${o.event.id}`} value={`${o.dateKey}:${o.event.id}`}>
+                {dayShort[o.event.day]} {formatDay(o.dateKey, isThai)} · {o.event.start}
+                {o.dateKey === todayKey() ? t(" (today)", " (วันนี้)") : ""}
               </option>
             ))}
           </select>
         </label>
-        <div className="plan-date" aria-label={t("Date", "วันที่")}>
-          <button type="button" onClick={() => shiftDate(-7)} aria-label={t("Previous week", "สัปดาห์ก่อน")}>
-            <ArrowLeft size={14} />
-          </button>
-          <strong>
-            {event ? dayNames[event.day] : ""} {formatDay(date, isThai)} {date.slice(0, 4)}
-          </strong>
-          <button type="button" onClick={() => shiftDate(7)} aria-label={t("Next week", "สัปดาห์ถัดไป")}>
-            <ArrowRight size={14} />
-          </button>
-        </div>
         {plan?.autoBackfill && <span className="auto-badge">{t("Auto-backfill on", "เติมช่องอัตโนมัติ")}</span>}
         {plan && (
           <span className="plan-count">
@@ -451,7 +478,7 @@ export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, ac
       )}
 
       <div className="team-overview">
-        <JobChartCard jobs={jobs} members={members} assignments={assignmentsOf(plan)} isThai={isThai} canEdit={isAdmin} onEditJobs={jobManager.open} />
+        <JobChartCard jobs={jobs} members={members} assignments={assignmentsOf(plan)} isThai={isThai} />
       </div>
 
       {picked && canEdit && (
@@ -526,8 +553,6 @@ export default function TeamPlanner({ isThai, isAdmin, jobs, members, events, ac
           </div>
         </div>
       )}
-
-      {isAdmin && <JobManagerDialog manager={jobManager} members={members} isThai={isThai} />}
     </section>
   );
 }

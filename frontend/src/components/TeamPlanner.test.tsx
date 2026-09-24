@@ -34,7 +34,7 @@ function setup(me: Me, layout: FakeLayout, registered: string[] = [], opts: { au
   const notify = vi.fn();
   const user = userEvent.setup({ delay: null });
   const view = render(
-    <TeamPlanner isThai={opts.isThai ?? false} isAdmin={me.isAdmin} jobs={jobs} members={members} events={events} activities={activities} onSaveJobs={async () => null} onNotice={notify} />,
+    <TeamPlanner isThai={opts.isThai ?? false} isAdmin={me.isAdmin} jobs={jobs} members={members} events={events} activities={activities} onNotice={notify} />,
   );
   return { fake, notify, user, view };
 }
@@ -45,11 +45,11 @@ const focusWindow = () => act(async () => void window.dispatchEvent(new Event("f
 const dt = (data: Record<string, string>) => ({ dataTransfer: { getData: (k: string) => data[k] ?? "", setData: vi.fn(), effectAllowed: "", dropEffect: "" } });
 
 describe("TeamPlanner on the plan API", () => {
-  it("the selector lists only activities that have a planner", async () => {
+  it("the activity tabs list only activities that have a planner", async () => {
     setup(meUser, GUILD_LEAGUE);
-    const select = await screen.findByLabelText("Activity");
-    const names = within(select).getAllByRole("option").map((o) => o.textContent);
-    expect(names).toEqual(["Guild League · Tuesday 21:30", "Polarity Zone · Sunday 12:00"]);
+    const tabs = await screen.findAllByRole("tab");
+    const names = tabs.map((tab) => tab.textContent);
+    expect(names).toEqual(["Guild League", "Polarity Zone"]);
     expect(names.join()).not.toMatch(/Hazy/);
   });
 
@@ -63,17 +63,19 @@ describe("TeamPlanner on the plan API", () => {
     expect(team("Main 1").querySelectorAll(".subteam-slot")).toHaveLength(1);
   });
 
-  it("asks for the Bangkok occurrence date and can step by a week", async () => {
+  it("asks for the Bangkok occurrence date and offers this week and the next two", async () => {
     const { fake, user } = setup(meUser, GUILD_LEAGUE);
     await waitFor(() => expect(fake.calls.some((c) => c.path.endsWith("/2026-09-22/plan"))).toBe(true));
-    expect(screen.getByText(/Tuesday 22 Sep 2026/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Next week" }));
+    const select = await screen.findByLabelText("Date");
+    const names = within(select).getAllByRole("option").map((o) => o.textContent);
+    expect(names).toEqual(["Tue 22 Sep · 21:30", "Tue 29 Sep · 21:30", "Tue 6 Oct · 21:30"]);
+    await user.selectOptions(select, "2026-09-29:guild-league-tue-1");
     await waitFor(() => expect(fake.calls.some((c) => c.path.endsWith("/2026-09-29/plan"))).toBe(true));
   });
 
   it("Polarity Zone shows 50 slots and a numbered reserves list in registration order", async () => {
     const { user } = setup(meUser, POLARITY, ["m-cleo", "m-bo", "m-dax"]);
-    await user.selectOptions(await screen.findByLabelText("Activity"), "polarity-zone");
+    await user.click(await screen.findByRole("tab", { name: "Polarity Zone" }));
     await waitFor(() => expect(room("Main")).toHaveTextContent("0/50 slots"));
     const list = screen.getByRole("list", { name: /Reserves in registration order/ });
     const rows = within(list).getAllByRole("listitem").map((li) => li.textContent);
@@ -267,12 +269,12 @@ describe("TeamPlanner on the plan API", () => {
   });
 });
 
-describe("job chart and manager (kept)", () => {
-  it("still shows members per job and the admin's job manager", async () => {
-    const { user } = setup(meAdmin, POLARITY);
+describe("job chart (kept, no manager here)", () => {
+  it("shows members per job but no job manager: that lives in Admin > Jobs now", async () => {
+    setup(meAdmin, POLARITY);
     const card = document.querySelector(".chart-card") as HTMLElement;
     expect(within(card).getAllByText("High Priest").length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: /Manage jobs/ }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("Jobs & card colours");
+    expect(screen.queryByRole("button", { name: /Manage jobs/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Edit jobs/ })).not.toBeInTheDocument();
   });
 });

@@ -109,7 +109,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
             members={guild.members}
             events={data.events}
             activities={guild.activities}
-            onSaveJobs={guild.saveJobs}
             onNotice={notify}
           />
         </div>
