@@ -39,6 +39,8 @@
 .item-card.claimed { background: #151715; opacity: .66; }
 .item-info { margin-top: 0; }
 .rarity { color: #8b9988; font: 9px 'DM Mono'; text-transform: uppercase; letter-spacing: .1em; }
+.rarity.epic { color: #c794ef; }
+.rarity.legendary { color: #e6bd67; }
 .item-info h3 { margin: 0; font-size: 13px; letter-spacing: -.03em; }
 .item-info small { display: block; color: #69736a; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .claim-button { width: 100%; padding: 6px 8px; margin-top: 7px; border-radius: 5px; color: #101610; background: #a9df5e; font-size: 10px; font-weight: 800; }
