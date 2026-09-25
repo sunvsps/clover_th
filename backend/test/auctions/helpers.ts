@@ -118,7 +118,7 @@ export const queueApi = (w: World) => ({
 export async function openQueueRound(
   w: World,
   admin: { h: H },
-  items: { name: string; category: Cat }[],
+  items: { name: string; category?: Cat; disabled?: boolean }[],
   o: { durationSec?: number } = {},
 ) {
   const A = api(w);

@@ -57,6 +57,27 @@ describe('WP8 admin: create, edit, start, close, cancel', () => {
     ).toBe(admin.id);
   });
 
+  it('a live-claim item may have no category; it stays uncategorized', async () => {
+    const admin = await session(w, { admin: true });
+    const res = await A.create(admin.h, {
+      type: 'LIVE_CLAIM',
+      name: 'Untagged items',
+      items: [{ name: 'no category' }, { name: 'null category', category: null }, { name: 'has one', category: 'RELIC' }],
+    });
+    expect(res.statusCode).toBe(201);
+    const stored = await w.db.prisma.auctionItem.findMany({ where: { roundId: res.json().id }, orderBy: { sortOrder: 'asc' } });
+    expect(stored.map((i) => i.category)).toEqual([null, null, 'RELIC']);
+    const detail = await w.app.inject({ method: 'GET', url: `/api/v1/auctions/rounds/${res.json().id}`, headers: admin.h });
+    expect(detail.json().items.map((i: { category: string | null }) => i.category)).toEqual([null, null, 'RELIC']);
+  });
+
+  it('a queue round still needs Gear, Card or Relic on every item', async () => {
+    const admin = await session(w, { admin: true });
+    const res = await A.create(admin.h, { type: 'QUEUE_RANKED', name: 'q', items: [{ name: 'a', category: 'GEAR' }, { name: 'untagged' }] });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('INVALID_CATEGORY_FOR_TYPE');
+  });
+
   it('validation: unknown category/type/field, bad image URL, NUL, invisible names, bounds', async () => {
     const admin = await session(w, { admin: true });
     const bad = [

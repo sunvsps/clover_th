@@ -34,14 +34,17 @@ export async function submitPreferences(
     throw new AppError('INVALID_PREFERENCE_LIST', 422, 'The list contains duplicate items');
   }
   if (itemIds.length > 0) {
-    const found = await tx.$queryRaw<{ id: number; category: string }[]>`
-      SELECT id, category::text AS category FROM "AuctionItem" WHERE "roundId" = ${roundId} AND id = ANY(${itemIds}::int[])`;
+    const found = await tx.$queryRaw<{ id: number; category: string; disabled: boolean }[]>`
+      SELECT id, category::text AS category, disabled FROM "AuctionItem" WHERE "roundId" = ${roundId} AND id = ANY(${itemIds}::int[])`;
     if (found.length !== itemIds.length) {
       throw new AppError(
         'INVALID_PREFERENCE_LIST',
         422,
         'The list contains unknown items or items of another round',
       );
+    }
+    if (found.some((f) => f.disabled)) {
+      throw new AppError('ITEM_DISABLED', 409, 'The list contains an item the admin disabled');
     }
     const eligible = new Set(await eligibleCategories(tx, roundId, memberId));
     for (const cat of new Set(found.map((f) => f.category))) {

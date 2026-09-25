@@ -1465,10 +1465,11 @@ export interface paths {
                         startDelaySec?: number;
                         items?: {
                             name: string;
-                            /** @enum {string} */
-                            category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                            /** @enum {string|null} */
+                            category?: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC" | null;
                             rarity?: string | null;
                             imageUrl?: string | null;
+                            disabled?: boolean;
                         }[];
                     };
                 };
@@ -1534,10 +1535,11 @@ export interface paths {
                         startDelaySec?: number;
                         items?: {
                             name: string;
-                            /** @enum {string} */
-                            category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                            /** @enum {string|null} */
+                            category?: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC" | null;
                             rarity?: string | null;
                             imageUrl?: string | null;
+                            disabled?: boolean;
                         }[];
                     };
                 };
@@ -1815,10 +1817,11 @@ export interface paths {
                             items: {
                                 id: number;
                                 name: string;
-                                /** @enum {string} */
-                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                /** @enum {string|null} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC" | null;
                                 rarity: string | null;
                                 imageUrl: string | null;
+                                disabled: boolean;
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
@@ -1871,10 +1874,11 @@ export interface paths {
                             item: {
                                 id: number;
                                 name: string;
-                                /** @enum {string} */
-                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                /** @enum {string|null} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC" | null;
                                 rarity: string | null;
                                 imageUrl: string | null;
+                                disabled: boolean;
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
@@ -1909,10 +1913,11 @@ export interface paths {
                             item: {
                                 id: number;
                                 name: string;
-                                /** @enum {string} */
-                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                /** @enum {string|null} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC" | null;
                                 rarity: string | null;
                                 imageUrl: string | null;
+                                disabled: boolean;
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
@@ -1963,10 +1968,11 @@ export interface paths {
                             items: {
                                 id: number;
                                 name: string;
-                                /** @enum {string} */
-                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                /** @enum {string|null} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC" | null;
                                 rarity: string | null;
                                 imageUrl: string | null;
+                                disabled: boolean;
                                 winner: {
                                     memberId: string;
                                     wonAt: string;
@@ -2019,10 +2025,11 @@ export interface paths {
                             items: {
                                 id: number;
                                 name: string;
-                                /** @enum {string} */
-                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC";
+                                /** @enum {string|null} */
+                                category: "PET" | "MATERIAL" | "GEMBOX" | "GEAR" | "CARD" | "RELIC" | null;
                                 rarity: string | null;
                                 imageUrl: string | null;
+                                disabled: boolean;
                                 winner: {
                                     memberId: string;
                                     wonAt: string;

@@ -450,3 +450,21 @@ describe('WP9 allocation through the API', () => {
     expect((await replayAllocation(w.db.prisma, r.id)).matches).toBe(false);
   });
 });
+
+describe('disabled items in a queue round', () => {
+  it('need no category, cannot be ranked (ITEM_DISABLED), and are neither allocated nor copied as leftovers', async () => {
+    const admin = await session(w, { admin: true });
+    const [a] = await sessions(w, 1);
+    await Q.join(a!.h, 'GEAR');
+    const r = await openQueueRound(w, admin, [...gear(2), { name: 'off', disabled: true }]);
+    const off = r.itemIds[2]!;
+    const res = await Q.setPrefs(a!.h, r.id, [off]);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('ITEM_DISABLED');
+    await Q.setPrefs(a!.h, r.id, [r.itemIds[0]!]);
+    await A.close(admin.h, r.id);
+    expect(await stored(r.id)).toEqual([a!.id, null, null]);
+    const leftover = await w.db.prisma.auctionRound.findFirstOrThrow({ where: { sourceRoundId: r.id }, include: { items: true } });
+    expect(leftover.items.map((i) => i.name)).toEqual(['Gear 2']);
+  });
+});

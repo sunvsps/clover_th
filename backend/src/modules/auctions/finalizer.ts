@@ -44,7 +44,8 @@ export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string)
       imageUrl: string | null;
       sortOrder: number;
     }[]
-  >`SELECT id, name, category, rarity, "imageUrl", "sortOrder" FROM "AuctionItem" WHERE "roundId" = ${round.id} ORDER BY "sortOrder", id`;
+  >`SELECT id, name, category, rarity, "imageUrl", "sortOrder" FROM "AuctionItem"
+    WHERE "roundId" = ${round.id} AND NOT disabled ORDER BY "sortOrder", id`; // a disabled item is neither allocated nor a leftover
   const categories = [...new Set(items.map((i) => i.category))];
   await categoryLocks(tx, categories);
 

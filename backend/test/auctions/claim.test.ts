@@ -265,3 +265,20 @@ describe('WP8 polling, results', () => {
     expect(res.json().items[0].winner.memberId).toBe(a.id);
   });
 });
+
+describe('disabled items', () => {
+  it('a disabled item shows on the board but cannot be claimed (ITEM_DISABLED)', async () => {
+    const admin = await session(w, { admin: true });
+    const me = await session(w);
+    const r = await openRound(w, admin, { items: [{ name: 'on' }, { name: 'off', disabled: true }] });
+    const round = (await w.app.inject({ method: 'GET', url: `/api/v1/auctions/rounds/${r.id}`, headers: me.h })).json();
+    expect(round.items.map((i: { name: string; disabled: boolean }) => [i.name, i.disabled])).toEqual([
+      ['on', false],
+      ['off', true],
+    ]);
+    const res = await A.claim(me.h, r.id, r.itemIds[1]!);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('ITEM_DISABLED');
+    expect((await A.claim(me.h, r.id, r.itemIds[0]!)).statusCode).toBe(200);
+  });
+});

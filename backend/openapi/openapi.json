@@ -2689,6 +2689,7 @@
                           "maxLength": 400
                         },
                         "category": {
+                          "nullable": true,
                           "type": "string",
                           "enum": [
                             "PET",
@@ -2709,11 +2710,13 @@
                           "type": "string",
                           "minLength": 1,
                           "maxLength": 2000
+                        },
+                        "disabled": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
-                        "name",
-                        "category"
+                        "name"
                       ],
                       "additionalProperties": false
                     }
@@ -2838,6 +2841,7 @@
                           "maxLength": 400
                         },
                         "category": {
+                          "nullable": true,
                           "type": "string",
                           "enum": [
                             "PET",
@@ -2858,11 +2862,13 @@
                           "type": "string",
                           "minLength": 1,
                           "maxLength": 2000
+                        },
+                        "disabled": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
-                        "name",
-                        "category"
+                        "name"
                       ],
                       "additionalProperties": false
                     }
@@ -3426,6 +3432,7 @@
                             "type": "string"
                           },
                           "category": {
+                            "nullable": true,
                             "type": "string",
                             "enum": [
                               "PET",
@@ -3443,6 +3450,9 @@
                           "imageUrl": {
                             "nullable": true,
                             "type": "string"
+                          },
+                          "disabled": {
+                            "type": "boolean"
                           },
                           "winner": {
                             "nullable": true,
@@ -3473,6 +3483,7 @@
                           "category",
                           "rarity",
                           "imageUrl",
+                          "disabled",
                           "winner"
                         ],
                         "additionalProperties": false
@@ -3558,6 +3569,7 @@
                           "type": "string"
                         },
                         "category": {
+                          "nullable": true,
                           "type": "string",
                           "enum": [
                             "PET",
@@ -3575,6 +3587,9 @@
                         "imageUrl": {
                           "nullable": true,
                           "type": "string"
+                        },
+                        "disabled": {
+                          "type": "boolean"
                         },
                         "winner": {
                           "nullable": true,
@@ -3605,6 +3620,7 @@
                         "category",
                         "rarity",
                         "imageUrl",
+                        "disabled",
                         "winner"
                       ],
                       "additionalProperties": false
@@ -3670,6 +3686,7 @@
                           "type": "string"
                         },
                         "category": {
+                          "nullable": true,
                           "type": "string",
                           "enum": [
                             "PET",
@@ -3687,6 +3704,9 @@
                         "imageUrl": {
                           "nullable": true,
                           "type": "string"
+                        },
+                        "disabled": {
+                          "type": "boolean"
                         },
                         "winner": {
                           "nullable": true,
@@ -3717,6 +3737,7 @@
                         "category",
                         "rarity",
                         "imageUrl",
+                        "disabled",
                         "winner"
                       ],
                       "additionalProperties": false
@@ -3791,6 +3812,7 @@
                             "type": "string"
                           },
                           "category": {
+                            "nullable": true,
                             "type": "string",
                             "enum": [
                               "PET",
@@ -3808,6 +3830,9 @@
                           "imageUrl": {
                             "nullable": true,
                             "type": "string"
+                          },
+                          "disabled": {
+                            "type": "boolean"
                           },
                           "winner": {
                             "nullable": true,
@@ -3838,6 +3863,7 @@
                           "category",
                           "rarity",
                           "imageUrl",
+                          "disabled",
                           "winner"
                         ],
                         "additionalProperties": false
@@ -3917,6 +3943,7 @@
                             "type": "string"
                           },
                           "category": {
+                            "nullable": true,
                             "type": "string",
                             "enum": [
                               "PET",
@@ -3934,6 +3961,9 @@
                           "imageUrl": {
                             "nullable": true,
                             "type": "string"
+                          },
+                          "disabled": {
+                            "type": "boolean"
                           },
                           "winner": {
                             "nullable": true,
@@ -3964,6 +3994,7 @@
                           "category",
                           "rarity",
                           "imageUrl",
+                          "disabled",
                           "winner"
                         ],
                         "additionalProperties": false

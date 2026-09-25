@@ -28,17 +28,24 @@ export type RoundRow = {
 
 export type ItemInput = {
   name: string;
-  category: ItemCategory;
+  /** Unset (or null) when an admin creates a live-claim round without tagging the item; it stays uncategorized.
+   * A queue-ranked round needs Gear, Card or Relic on every item (see assertCategoriesForType). */
+  category?: ItemCategory | null;
   rarity?: string | null;
   imageUrl?: string | null;
+  /** keeps its slot on the board but can't be claimed or ranked (default false) */
+  disabled?: boolean;
 };
 
 export type ItemView = {
   id: number;
   name: string;
-  category: ItemCategory;
+  /** null = the admin left the item untagged (live-claim rounds only) */
+  category: ItemCategory | null;
   rarity: string | null;
   imageUrl: string | null;
+  /** the admin disabled the item: it shows on the board but can't be claimed or ranked */
+  disabled: boolean;
   /** queuePos: the winner's position in the frozen queue snapshot (type 2), null for a live claim */
   winner: { memberId: string; wonAt: string; queuePos: number | null } | null;
 };
@@ -64,9 +71,10 @@ export async function dbNow(db: Db): Promise<Date> {
 type ItemRow = {
   id: number;
   name: string;
-  category: ItemCategory;
+  category: ItemCategory | null;
   rarity: string | null;
   imageUrl: string | null;
+  disabled: boolean;
   winnerId: string | null;
   wonAt: Date | null;
   queuePos: number | null;
@@ -78,6 +86,7 @@ const toItem = (i: ItemRow): ItemView => ({
   category: i.category,
   rarity: i.rarity,
   imageUrl: i.imageUrl,
+  disabled: i.disabled,
   winner:
     i.winnerId && i.wonAt
       ? { memberId: i.winnerId, wonAt: i.wonAt.toISOString(), queuePos: i.queuePos }
@@ -87,17 +96,17 @@ const toItem = (i: ItemRow): ItemView => ({
 export async function readItems(db: Db, roundId: number, onlyWinner?: string): Promise<ItemView[]> {
   const rows = onlyWinner
     ? await db.$queryRaw<ItemRow[]>`
-        SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
+        SELECT id, name, category, rarity, "imageUrl", disabled, "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
         WHERE "roundId" = ${roundId} AND "winnerId" = ${onlyWinner}::uuid ORDER BY "sortOrder", id`
     : await db.$queryRaw<ItemRow[]>`
-        SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
+        SELECT id, name, category, rarity, "imageUrl", disabled, "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
         WHERE "roundId" = ${roundId} ORDER BY "sortOrder", id`;
   return rows.map(toItem);
 }
 
 export async function readItem(db: Db, roundId: number, itemId: number): Promise<ItemView | null> {
   const rows = await db.$queryRaw<ItemRow[]>`
-    SELECT id, name, category, rarity, "imageUrl", "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
+    SELECT id, name, category, rarity, "imageUrl", disabled, "winnerId", "wonAt", "queuePos" FROM "AuctionItem"
     WHERE id = ${itemId} AND "roundId" = ${roundId}`;
   return rows[0] ? toItem(rows[0]) : null;
 }
@@ -142,7 +151,7 @@ export async function roundFingerprint(db: Db, roundId: number, memberId: string
            max(i."wonAt") AS last, (count(*) FILTER (WHERE i."winnerId" = ${memberId}::uuid))::int AS mine,
            -- everything an admin can edit on a draft: name, cap, timing, and every item's id/name/category/rarity/image
            concat_ws('|', r.name, r."winCap", r."durationSec", r."startDelaySec") AS config,
-           md5(COALESCE(string_agg(concat_ws('|', i.id, i.name, i.category, i.rarity, i."imageUrl"), ',' ORDER BY i.id), '')) AS content
+           md5(COALESCE(string_agg(concat_ws('|', i.id, i.name, i.category, i.rarity, i."imageUrl", i.disabled), ',' ORDER BY i.id), '')) AS content
     FROM "AuctionRound" r LEFT JOIN "AuctionItem" i ON i."roundId" = r.id
     WHERE r.id = ${roundId} GROUP BY r.id`;
   const x = rows[0];
@@ -165,17 +174,19 @@ export async function roundFingerprint(db: Db, roundId: number, memberId: string
 
 // ---------- admin lifecycle ----------
 
-/** A type-2 round covers Gear, Card and Relic only; a type-1 round accepts any category (leftovers roll into it). */
+/** A type-2 round covers Gear, Card and Relic only, so every item needs one of them (allocation and eligibility are
+ * per category); a type-1 round accepts any category or none (leftovers roll into it). */
 export function assertCategoriesForType(type: RoundRow['type'], items: ItemInput[]) {
   if (type !== 'QUEUE_RANKED') return;
-  const bad = items.find((i) => !(QUEUE_CATEGORIES as readonly string[]).includes(i.category));
+  // a disabled item is never allocated, so it needs no category
+  const bad = items.find((i) => !i.disabled && (!i.category || !(QUEUE_CATEGORIES as readonly string[]).includes(i.category)));
   if (bad) {
     throw new AppError(
       'INVALID_CATEGORY_FOR_TYPE',
       422,
       'A queue round accepts only Gear, Card and Relic items',
       {
-        category: bad.category,
+        category: bad.category ?? null,
       },
     );
   }
@@ -194,7 +205,8 @@ export async function createRound(
     requestId?: string;
   },
 ): Promise<RoundRow> {
-  assertCategoriesForType(a.type, a.items);
+  const { items } = a;
+  assertCategoriesForType(a.type, items);
   const created = await tx.auctionRound.create({
     data: {
       type: a.type,
@@ -203,7 +215,7 @@ export async function createRound(
       winCap: a.winCap,
       startDelaySec: a.startDelaySec,
       createdById: a.actorId,
-      items: { create: a.items.map((it, i) => ({ ...itemData(it), sortOrder: i })) },
+      items: { create: items.map((it, i) => ({ ...itemData(it), sortOrder: i })) },
     },
   });
   await record(tx, {
@@ -220,7 +232,8 @@ export async function createRound(
 
 const itemData = (it: ItemInput) => ({
   name: it.name,
-  category: it.category,
+  category: it.category ?? null,
+  disabled: it.disabled ?? false,
   rarity: it.rarity ?? null,
   imageUrl: it.imageUrl ?? null,
 });
@@ -358,7 +371,8 @@ export async function startRound(
     // Inside the category locks (after the round lock, sorted), so the cutoff is a consistent queue cut:
     // entries with id <= cutoff are eligible, joins during the window get bigger ids.
     const cats = await tx.$queryRaw<{ category: string }[]>`
-      SELECT DISTINCT category::text AS category FROM "AuctionItem" WHERE "roundId" = ${id}`;
+      SELECT DISTINCT category::text AS category FROM "AuctionItem"
+      WHERE "roundId" = ${id} AND category IS NOT NULL AND NOT disabled`;
     cutoffCategories = cats.map((c) => c.category).sort();
     await categoryLocks(tx, cutoffCategories);
   }

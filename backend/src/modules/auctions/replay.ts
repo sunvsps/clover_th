@@ -24,7 +24,9 @@ export async function replayAllocation(prisma: PrismaClient, roundId: number): P
   });
   const queues: QueueSnapshot = {};
   for (const s of snapshot) (queues[s.category] ??= []).push(s.memberId);
-  const expected = allocate(queues, items, await loadPreferences(prisma, roundId))
+  // A queue round's items always have a category (assertCategoriesForType); untagged ones can't be allocated anyway.
+  const allocItems = items.flatMap((i) => (i.category && !i.disabled ? [{ id: i.id, category: i.category }] : []));
+  const expected = allocate(queues, allocItems, await loadPreferences(prisma, roundId))
     .map((a) => ({ itemId: a.itemId, memberId: a.memberId, position: a.position }))
     .sort((a, b) => a.itemId - b.itemId);
   const stored = items

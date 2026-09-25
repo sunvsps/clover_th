@@ -22,9 +22,10 @@ export async function claimItem(
   const gate = await openWindow(tx, roundId, 'LIVE_CLAIM');
   await memberClaimLock(tx, roundId, memberId);
 
-  const [cur] = await tx.$queryRaw<{ winnerId: string | null }[]>`
-    SELECT "winnerId" FROM "AuctionItem" WHERE id = ${itemId} AND "roundId" = ${roundId}`;
+  const [cur] = await tx.$queryRaw<{ winnerId: string | null; disabled: boolean }[]>`
+    SELECT "winnerId", disabled FROM "AuctionItem" WHERE id = ${itemId} AND "roundId" = ${roundId}`;
   if (!cur) throw new AppError('NOT_FOUND', 404, 'Item not found in this round');
+  if (cur.disabled) throw new AppError('ITEM_DISABLED', 409, 'The admin disabled this item');
   // Idempotent retry BEFORE the cap check: a retry at 5/5 must not report CLAIM_CAP_REACHED for an item the caller owns.
   if (cur.winnerId === memberId) return respond(tx, roundId, itemId, memberId);
 

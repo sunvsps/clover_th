@@ -276,10 +276,12 @@ model AuctionItem {
   roundId     Int
   round       AuctionRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
   name        String
-  category    ItemCategory
+  category    ItemCategory?
   rarity      String?
   imageUrl    String?
   sortOrder   Int          @default(0)
+  /// admin unticked it when creating the round: it keeps its slot on the board but can't be claimed or ranked
+  disabled    Boolean      @default(false)
   winnerId    String?      @db.Uuid
   winner      Member?      @relation(fields: [winnerId], references: [id], onDelete: Restrict)
   wonAt       DateTime?

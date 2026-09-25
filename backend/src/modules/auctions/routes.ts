@@ -45,9 +45,12 @@ const imageUrl = safeString(2000).refine(
 const itemIn = z
   .object({
     name: nameField(100),
-    category,
+    // Unset/null = untagged (live-claim rounds only; a queue round needs Gear/Card/Relic on every item).
+    category: category.nullable().optional(),
     rarity: nameField(32).nullable().optional(),
     imageUrl: imageUrl.nullable().optional(),
+    // keeps its slot on the board but can't be claimed or ranked
+    disabled: z.boolean().optional(),
   })
   .strict();
 
@@ -68,9 +71,10 @@ const winner = z
 const itemOut = z.object({
   id: z.number(),
   name: z.string(),
-  category,
+  category: category.nullable(),
   rarity: z.string().nullable(),
   imageUrl: z.string().nullable(),
+  disabled: z.boolean(),
   winner,
 });
 const idParam = z.object({ id: z.coerce.number().int().positive() });
