@@ -1,5 +1,7 @@
 # Clover_TH Backend: Design Review (Forge, Mode A)
 
+> **Historical record.** This review gated implementation before WP6 started. The concurrency holes and other required changes it raised were resolved during WP6–WP10 (see `docs/backend-design.md` section 16 and the actual locking/allocation code); nothing below describes an open issue in the current codebase. Kept for the design rationale, not as a live checklist.
+
 Reviewed: `docs/backend-design.md` (Atlas, "FINAL") against `docs/requirements.md` v5 and the existing frontend (`App.tsx`, `data/guild.ts`, `TeamPlanner.tsx`, `WeeklySchedule.tsx`, `README.md`).
 Scale assumed: one guild, ~76 members, ~80 concurrent users during an auction, one API instance.
 

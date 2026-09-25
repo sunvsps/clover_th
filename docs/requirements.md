@@ -13,7 +13,7 @@ Legend for every item:
 
 ## 1. Overview and goals
 
-The guild is named **Clover_TH** [CONFIRMED]; the repository and project folder are named Cover_TH. This is a management app for the Clover_TH guild in Ragnarok: The New World (Thai server). A React/Vite frontend already exists in `frontend/`, running entirely on mock in-memory state. This project builds the backend (Node.js, PostgreSQL, Prisma) that replaces the mock state.
+The guild is named **Clover_TH** [CONFIRMED]; the repository and project folder are named Cover_TH. This is a management app for the Clover_TH guild in Ragnarok: The New World (Thai server). At the time this document was written, a React/Vite frontend already existed in `frontend/`, running entirely on mock in-memory state. This project built the backend (Node.js, PostgreSQL, Prisma) that replaces the mock state. **Status: done as of WP11–WP15** — the frontend now runs entirely on the real API (auth, weekly schedule, team planner, auctions, admin); no mock state remains.
 
 Business goals:
 
@@ -302,7 +302,7 @@ All actions are admin-only and enforced server-side.
 - Page holds from the old frontend auction UI [DEFAULT].
 - Item image file upload. v1 uses an admin-pasted URL; upload is a later phase [CONFIRMED].
 
-**Frontend changes implied** (for the architect's change list)
+**Frontend changes implied** (for the architect's change list) — **all completed as of WP11–WP15**
 - Replace mock state with API calls and key everything by member id.
 - Replace hardcoded A/B x 8 x 5 with per-activity room layouts (Main/Sub etc.).
 - Auction UI: replace 200 generic items and page holds with categories, per-round items, queues, ranked preference entry; default duration 5 minutes.
@@ -359,7 +359,7 @@ Members (id, Discord id, in-game name, nickname, job, active, isAdmin), jobs, ac
 | D-5 | Type 2: at most 1 win per category per round. | User | |
 | D-6 | "Guild War" means Guild League (Main and Sub rooms). | User | |
 | D-7 | Type 1 is a live 5-minute race, winner shown immediately, cap 5 per round per person. | User | |
-| D-8 | Login is Discord-only; the bot registers members through a separately authenticated endpoint; unregistered users cannot log in. | User | Frontend mock sign-in |
+| D-8 | Login is Discord-only; the bot registers members through a separately authenticated endpoint; unregistered users cannot log in. | User | Implemented via real Discord OAuth (WP11); frontend mock sign-in removed |
 | D-9 | Admin creates rounds and items. | User | |
 | D-10 | Keep `leave`. | User | |
 | D-11 | Asia/Bangkok, Monday start. | User | Browser-local time in the frontend |

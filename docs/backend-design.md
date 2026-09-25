@@ -99,11 +99,13 @@ backend/
 | `SESSION_SECRET` | Signs the OAuth state cookie |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | OAuth |
 | `FRONTEND_URL` | Post-login redirect and Origin check (dev: `http://localhost:5173`) |
-| `BOT_API_KEYS` | Comma-separated sha256 hex digests of inbound bot keys (one or two, for rotation). Generate with `scripts/hash-bot-key.ts` |
+| `BOT_API_KEYS` | Comma-separated sha256 hex digests of inbound bot keys (one or two, for rotation). Generate with `scripts/hash-bot-key.ts`. Required — the server refuses to start without it |
 | `NOTIFICATIONS_PROVIDER` | `bot`, `fake` or `off` |
 | `DISCORD_BOT_NOTIFY_URL`, `DISCORD_BOT_NOTIFY_SECRET` | Outbound push to the bot (HMAC key) |
 
 URLs and secrets come only from env. The channel id and the auto-backfill toggle are DB settings.
+
+This table covers only the core vars from initial design. The full, current list (proxy trust, rate limits, session lifetime, local demo login, frontend-serving) lives in [`docs/deploy.md`](./deploy.md) — treat that doc as the source of truth for env configuration.
 
 Prisma pool rule (B3): every claim, release and queue join is an interactive transaction holding a pooled connection for about 6 round trips, so the default pool (`num_cpus*2+1`) and default `maxWait` (2 s) would fail under 80 concurrent claims. All transactions go through one `tx(fn)` helper that applies `{ maxWait, timeout }` from env. A Prisma `P2028` (could not start a transaction in time) is mapped to a retryable `503 SERVICE_BUSY`, `P2034` (serialization or deadlock) is retried once. If the WP8 load test (80 parallel claims, p95 under 200 ms, no `P2028`) is not met with interactive transactions, the claim, release and queue-join paths switch to a single-statement raw path: one `$queryRaw` (or a small plpgsql function) that takes the advisory lock, checks the window and cap, does the conditional UPDATE and writes the audit row in one round trip. The decision is made by measurement in WP8, but the pool settings are part of WP1 and the test harness uses the same settings.
 
@@ -517,6 +519,17 @@ Auth column: **P** public, **A** any signed-in member, **M** self or admin, **Ad
 
 There is no `GET /time`: every time-sensitive response already carries `serverTime`, and `/me` and the round list carry it before a round loads.
 
+#### 6.1.1 Local demo login (dev-only)
+
+Registered only when `LOCAL_DEMO_ENABLED=true` (refuses to start in production, over an https `FRONTEND_URL`, or against a non-local database — see [`docs/deploy.md`](./deploy.md)). Both routes 404 for any peer that is not loopback (TCP socket address, not `X-Forwarded-For`).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | /demo/members | P (loopback only) | Active members `[{memberId, discordId, ign, nickname, isAdmin}]` for a local sign-in picker |
+| POST | /demo/login | P (loopback only) | `{discordId}` creates a normal session, exactly like the OAuth callback would |
+
+See `backend/src/modules/demo/routes.ts`.
+
 ### 6.2 Bot
 
 | Method | Path | Auth | Purpose |
@@ -634,6 +647,7 @@ The leftover draft is an ordinary DRAFT round (`sourceRoundId` set). The admin r
 | AUTH_NOT_REGISTERED | 403 | Discord user not registered by the bot |
 | AUTH_MEMBER_INACTIVE | 403 | Member is deactivated |
 | AUTH_OAUTH_FAILED | 400 | OAuth exchange failed |
+| AUTH_STATE_INVALID | 400 | OAuth `state` cookie missing, expired, or reused (M-6 fix, `edd588f`) |
 | ADMIN_REQUIRED | 403 | Admin-only endpoint |
 | FORBIDDEN_OTHER_MEMBER | 403 | Member tried to change someone else |
 | BOT_KEY_INVALID | 401 | Missing or wrong bot key |
