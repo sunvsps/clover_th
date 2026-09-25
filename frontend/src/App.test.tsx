@@ -16,12 +16,12 @@ describe("App shell", () => {
     await renderApp();
     expect(screen.getByLabelText("Clover TH home")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Guild tools" });
-    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Auction queue", "Schedule", "Team planner", "Complaint", "Auction (new layout)", "Admin"]);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guild item auction");
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Auction", "Auction queue", "Schedule", "Team planner", "Complaint", "Admin"]);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Guild item queue");
     expect(await screen.findByText(/no auction round yet/i)).toBeInTheDocument();
   });
 
-  it("the tabs switch views and keep the URL hash in step; the auction page stays mounted but hidden", async () => {
+  it("the tabs switch views and keep the URL hash in step", async () => {
     const user = userEvent.setup({ delay: null });
     await renderApp();
     await user.click(screen.getByRole("button", { name: "Auction queue" }));
@@ -29,13 +29,14 @@ describe("App shell", () => {
     expect(await screen.findByTestId("queue-page")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Schedule" }));
     expect(window.location.hash).toBe("#calendar");
-    expect(document.getElementById("top")).toHaveClass("hidden-view");
+    expect(document.getElementById("top")).not.toBeInTheDocument();
     expect(document.querySelector(".feature-content")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Team planner" }));
     expect(window.location.hash).toBe("#teams");
     expect(document.querySelector(".feature-content.wide")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Auction" }));
-    expect(document.getElementById("top")).not.toHaveClass("hidden-view");
+    expect(window.location.hash).toBe("");
+    expect(document.getElementById("top")).toBeInTheDocument();
   });
 
   it("switches the whole shell to Thai and back", async () => {

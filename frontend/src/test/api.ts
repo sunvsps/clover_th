@@ -323,7 +323,7 @@ export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () 
   const err = (code: string, status: number, details: Record<string, unknown> = {}, headers?: Record<string, string>) =>
     HttpResponse.json({ error: { code, message: code, details } }, { status, headers });
   const stamp = () => ({ "X-Server-Time": new Date(opts.serverNow()).toISOString() });
-  const wireItem = (i: FakeItem) => ({ id: i.id, name: i.name, category: i.category, rarity: null, imageUrl: null, winner: i.winner ? { memberId: i.winner, wonAt: "2026-09-21T10:00:00Z", queuePos: i.queuePos ?? null } : null });
+  const wireItem = (i: FakeItem) => ({ id: i.id, name: i.name, category: i.category, rarity: null, imageUrl: null, disabled: false, winner: i.winner ? { memberId: i.winner, wonAt: "2026-09-21T10:00:00Z", queuePos: i.queuePos ?? null } : null });
   const summary = (r: FakeRound) => ({
     id: r.id, type: r.type, name: r.name, status: r.status, durationSec: 300, winCap: r.type === "LIVE_CLAIM" ? (r.winCap ?? 5) : null,
     startDelaySec: 3, opensAt: r.opensAt ?? null, closesAt: r.closesAt ?? null,

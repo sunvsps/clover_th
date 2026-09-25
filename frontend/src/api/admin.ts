@@ -124,9 +124,10 @@ const summaryOf = (r: WireRoundOut): RoundSummary => ({
   id: r.id, type: r.type === "LIVE_CLAIM" ? "liveClaim" : "queueRanked", name: r.name, status: statusFromWire[r.status] as RoundStatus, durationSec: r.durationSec, winCap: r.winCap,
   startDelaySec: r.startDelaySec, opensAt: r.opensAt, closesAt: r.closesAt,
 });
-export type RoundItemInput = { name: string; category: Category; rarity?: string | null; imageUrl?: string | null };
+/** `category` left unset means the admin hasn't tagged that item: it's stored without a category (live claim only). */
+export type RoundItemInput = { name: string; category?: Category | null; rarity?: string | null; imageUrl?: string | null; disabled?: boolean };
 export type RoundInput = { name: string; durationSec: number; startDelaySec: number; winCap?: number; items: RoundItemInput[] };
-const itemsToWire = (items: RoundItemInput[]) => items.map((i) => ({ name: i.name, category: i.category.toUpperCase(), rarity: i.rarity || null, imageUrl: i.imageUrl || null }));
+const itemsToWire = (items: RoundItemInput[]) => items.map((i) => ({ name: i.name, category: i.category ? i.category.toUpperCase() : null, rarity: i.rarity || null, imageUrl: i.imageUrl || null, disabled: i.disabled ?? false }));
 
 export const createRound = async (type: RoundSummary["type"], input: RoundInput) =>
   summaryOf(await post<WireRoundOut>("/api/v1/admin/auctions/rounds", { type: roundTypeToWire[type], name: input.name, durationSec: input.durationSec, startDelaySec: input.startDelaySec, ...(type === "liveClaim" && input.winCap ? { winCap: input.winCap } : {}), items: itemsToWire(input.items) }));

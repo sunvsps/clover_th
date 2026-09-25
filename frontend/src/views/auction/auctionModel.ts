@@ -23,8 +23,9 @@ export function formatClock(totalSeconds: number): string {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function groupByCategory(items: AuctionItem[]): { category: Category; items: AuctionItem[] }[] {
-  return CATEGORIES.map((category) => ({ category, items: items.filter((i) => i.category === category) })).filter((g) => g.items.length > 0);
+/** Items by category in the fixed category order; untagged items (category null) come last as their own group. */
+export function groupByCategory(items: AuctionItem[]): { category: Category | null; items: AuctionItem[] }[] {
+  return [...CATEGORIES, null].map((category) => ({ category, items: items.filter((i) => i.category === category) })).filter((g) => g.items.length > 0);
 }
 
 /** Move the element at `index` by `delta` positions (clamped); returns a new array. */
@@ -47,7 +48,8 @@ const categoryNames: Record<Category, { en: string; th: string }> = {
   card: { en: "Card", th: "การ์ด" },
   relic: { en: "Relic", th: "โบราณวัตถุ" },
 };
-export const categoryLabel = (c: Category, isThai: boolean) => (isThai ? categoryNames[c].th : categoryNames[c].en);
+/** `null` = an untagged item. */
+export const categoryLabel = (c: Category | null, isThai: boolean) => (c === null ? (isThai ? "ไม่ระบุหมวด" : "No category") : isThai ? categoryNames[c].th : categoryNames[c].en);
 
 /** Text for a failed auction call: the winner's name, the cap, the wait time - else the translated code. */
 export function auctionErrorText(err: unknown, isThai: boolean, ignOf: (memberId: string) => string): string {

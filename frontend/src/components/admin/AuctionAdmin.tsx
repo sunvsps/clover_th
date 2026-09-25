@@ -72,7 +72,7 @@ export default function AuctionAdmin({ isThai, members, notify }: Props) {
       const res = await getRound(round.id, null);
       if (!res) return;
       const r = res.round;
-      setEditing({ mode: "edit", id: r.id, initial: { type: r.type, name: r.name, durationSec: r.durationSec, startDelaySec: r.startDelaySec, winCap: r.winCap ?? 5, items: r.items.map((i) => ({ name: i.name, category: i.category, rarity: i.rarity ?? "", imageUrl: i.imageUrl ?? "" })) } });
+      setEditing({ mode: "edit", id: r.id, initial: { type: r.type, name: r.name, durationSec: r.durationSec, startDelaySec: r.startDelaySec, winCap: r.winCap ?? 5, items: r.items.map((i) => ({ name: i.name, category: i.category, rarity: i.rarity ?? "", imageUrl: i.imageUrl ?? "", disabled: i.disabled })) } });
     } catch (err) {
       setError(adminErrorText(err, isThai));
     }

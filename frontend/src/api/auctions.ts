@@ -29,9 +29,12 @@ const categoryToWire = (c: Category) => c.toUpperCase();
 export type AuctionItem = {
   id: number;
   name: string;
-  category: Category;
+  /** null = the admin left the item untagged (live-claim rounds only) */
+  category: Category | null;
   rarity: string | null;
   imageUrl: string | null;
+  /** the admin disabled it: it keeps its slot on the board but can't be claimed or ranked */
+  disabled: boolean;
   /** who holds it (claimed, or allocated after a queue round); `queuePos` only for queue rounds */
   winner: { memberId: string; wonAt: string; queuePos: number | null } | null;
 };
@@ -57,9 +60,10 @@ export type Round = RoundSummary & {
 const itemFromWire = (i: WireItem): AuctionItem => ({
   id: i.id,
   name: i.name,
-  category: categoryFromWire(i.category),
+  category: i.category === null ? null : categoryFromWire(i.category),
   rarity: i.rarity,
   imageUrl: i.imageUrl,
+  disabled: i.disabled,
   winner: i.winner,
 });
 const summaryFromWire = (r: WireRound | WireRoundList["rounds"][number]): RoundSummary => ({

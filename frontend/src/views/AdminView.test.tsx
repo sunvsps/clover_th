@@ -252,16 +252,21 @@ describe("audit log", () => {
 describe("auction management", () => {
   const draftRound = { id: 1, type: "LIVE_CLAIM" as const, name: "Old draft", status: "DRAFT" as const, durationSec: 300, winCap: 5, startDelaySec: 3, items: [{ id: 1, name: "Pet 1", category: "PET", rarity: null, imageUrl: null }] };
 
-  it("creates a round as a draft and then starts it", async () => {
+  it("creates a round as a draft (auto-generated items) and then starts it", async () => {
     const { fake, user, notify } = setup(meAdmin);
     await screen.findByRole("button", { name: "New round" });
     await user.click(screen.getByRole("button", { name: "New round" }));
     await user.type(screen.getByLabelText("Name"), "Friday drops");
-    await user.type(screen.getByLabelText("Item 1 name"), "Pet 1");
     await user.click(screen.getByRole("button", { name: "Create round" }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Round created as a draft. Start it when you are ready."));
     const post = fake.calls.find((c) => c.method === "POST" && c.path.endsWith("/admin/auctions/rounds"))!;
-    expect(post.body).toMatchObject({ type: "LIVE_CLAIM", name: "Friday drops", durationSec: 300, startDelaySec: 3, items: [{ name: "Pet 1", category: "PET", rarity: null, imageUrl: null }] });
+    expect(post.body).toMatchObject({ type: "LIVE_CLAIM", name: "Friday drops", durationSec: 300, startDelaySec: 3 });
+    expect((post.body as { items: { name: string; category?: string }[] }).items).toEqual([
+      { name: "Item 1", category: null, rarity: null, imageUrl: null, disabled: false },
+      { name: "Item 2", category: null, rarity: null, imageUrl: null, disabled: false },
+      { name: "Item 3", category: null, rarity: null, imageUrl: null, disabled: false },
+      { name: "Item 4", category: null, rarity: null, imageUrl: null, disabled: false },
+    ]);
     const row = await screen.findByText(/Friday drops/).then((e) => e.closest("li") as HTMLElement);
     expect(row).toHaveTextContent("Draft");
     await user.click(within(row).getByRole("button", { name: "Start…" }));
@@ -273,17 +278,67 @@ describe("auction management", () => {
     await waitFor(() => expect(row).toHaveTextContent("Closed"));
   });
 
-  it("only https image links are accepted", async () => {
+  it("page count is limited to 1-50, and a card's color dots pick its category", async () => {
+    const { fake, user } = setup(meAdmin);
+    await user.click(await screen.findByRole("button", { name: "New round" }));
+    await user.type(screen.getByLabelText("Name"), "R");
+    const pages = screen.getByLabelText("Pages");
+    await user.clear(pages);
+    await user.type(pages, "9999");
+    await user.tab(); // blur clamps the field back into range
+    expect(pages).toHaveValue(50);
+    expect(screen.getByRole("button", { name: "Create round" })).toBeEnabled();
+
+    await user.clear(pages);
+    await user.type(pages, "1");
+    const card = screen.getByText("Item 1").closest(".item-card") as HTMLElement;
+    expect(within(card).getByText("No category")).toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "Gear" }));
+    expect(within(card).getByText("Gear", { selector: ".cat-pill" })).toBeInTheDocument();
+    await user.click(within(card).getByRole("button", { name: "Card" }));
+    expect(within(card).getByRole("button", { name: "Card" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(card).getByText("Card", { selector: ".cat-pill" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create round" }));
+    const post = fake.calls.find((c) => c.method === "POST" && c.path.endsWith("/admin/auctions/rounds"))!;
+    expect((post.body as { items: { name: string; category: string }[] }).items[0]).toMatchObject({ name: "Item 1", category: "CARD" });
+  });
+
+  it("an unticked item is saved as disabled in its slot", async () => {
+    const { fake, user } = setup(meAdmin);
+    await user.click(await screen.findByRole("button", { name: "New round" }));
+    await user.type(screen.getByLabelText("Name"), "R");
+    await user.click(screen.getByRole("checkbox", { name: "Use Item 2" }));
+    expect(screen.getByRole("checkbox", { name: "Use Item 2" })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Create round" }));
+    await waitFor(() => expect(fake.calls.some((c) => c.method === "POST" && c.path.endsWith("/admin/auctions/rounds"))).toBe(true));
+    const post = fake.calls.find((c) => c.method === "POST" && c.path.endsWith("/admin/auctions/rounds"))!;
+    expect((post.body as { items: { name: string; disabled: boolean }[] }).items.map((i) => [i.name, i.disabled])).toEqual([
+      ["Item 1", false],
+      ["Item 2", true],
+      ["Item 3", false],
+      ["Item 4", false],
+    ]);
+  });
+
+  it("disabling every item blocks creating the round", async () => {
     const { user } = setup(meAdmin);
     await user.click(await screen.findByRole("button", { name: "New round" }));
     await user.type(screen.getByLabelText("Name"), "R");
-    await user.type(screen.getByLabelText("Item 1 name"), "Pet 1");
-    await user.type(screen.getByLabelText("Item 1 image link"), "http://example.com/a.png");
-    expect(screen.getByText("Image links must be https:// URLs.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Disable all" }));
+    expect(screen.getByText("Tick at least one item.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create round" })).toBeDisabled();
-    await user.clear(screen.getByLabelText("Item 1 image link"));
-    await user.type(screen.getByLabelText("Item 1 image link"), "https://example.com/a.png");
+    await user.click(screen.getByRole("button", { name: "Enable all" }));
     expect(screen.getByRole("button", { name: "Create round" })).toBeEnabled();
+  });
+
+  it("pages can be cleared entirely and defaults back to 1 on blur", async () => {
+    const { user } = setup(meAdmin);
+    await user.click(await screen.findByRole("button", { name: "New round" }));
+    const pages = screen.getByLabelText("Pages");
+    await user.clear(pages);
+    expect(pages).toHaveValue(null);
+    await user.tab(); // blur
+    expect(pages).toHaveValue(1);
   });
 
   it("a draft can be edited and saved (PATCH)", async () => {

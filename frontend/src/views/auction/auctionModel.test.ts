@@ -25,7 +25,7 @@ describe("auctionModel", () => {
   });
 
   it("groups by category in the fixed order and moves list entries", () => {
-    const mk = (id: number, category: AuctionItem["category"]): AuctionItem => ({ id, name: String(id), category, rarity: null, imageUrl: null, winner: null });
+    const mk = (id: number, category: AuctionItem["category"]): AuctionItem => ({ id, name: String(id), category, rarity: null, imageUrl: null, disabled: false, winner: null });
     expect(groupByCategory([mk(1, "relic"), mk(2, "pet"), mk(3, "gear")]).map((g) => g.category)).toEqual(["pet", "gear", "relic"]);
     expect(moveInList([1, 2, 3], 2, -1)).toEqual([1, 3, 2]);
     expect(moveInList([1, 2, 3], 0, -1)).toEqual([1, 2, 3]);

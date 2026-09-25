@@ -1,4 +1,4 @@
-import { CalendarDays, Check, ListOrdered, MessageSquareWarning, Package, PackageSearch, Shield, Users, X } from "lucide-react";
+import { CalendarDays, Check, ListOrdered, MessageSquareWarning, Package, Shield, Users, X } from "lucide-react";
 import { getMembers, type GuildData } from "../api";
 import WeeklySchedule from "../components/WeeklySchedule";
 import TeamPlanner from "../components/TeamPlanner";
@@ -6,7 +6,6 @@ import { useGuildState } from "../hooks/useGuildState";
 import { useHashView } from "../hooks/useHashView";
 import type { Session } from "../hooks/useSession";
 import AdminView from "./AdminView";
-import AuctionView from "./AuctionView";
 import ComplaintView from "./ComplaintView";
 import PageAuctionView from "./PageAuctionView";
 import QueueView from "./QueueView";
@@ -62,9 +61,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         <button className={activeView === "complaint" ? "active" : ""} type="button" onClick={() => setActiveView("complaint")}>
           <MessageSquareWarning size={15} /> {isThai ? "ร้องทุกข์" : "Complaint"}
         </button>
-        <button className={activeView === "boardPreview" ? "active" : ""} type="button" onClick={() => setActiveView("boardPreview")}>
-          <PackageSearch size={15} /> {isThai ? "ประมูล (เลย์เอาต์ใหม่)" : "Auction (new layout)"}
-        </button>
         {session.isAdmin && (
           <button className={activeView === "admin" ? "active" : ""} type="button" onClick={() => setActiveView("admin")}>
             <Shield size={15} /> {isThai ? "แอดมิน" : "Admin"}
@@ -72,14 +68,11 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
         )}
       </nav>
 
-      <AuctionView
-        visible={activeView === "auction"}
-        isThai={isThai}
-        isAdmin={session.isAdmin}
-        memberId={session.memberId}
-        members={guild.members}
-        notify={notify}
-      />
+      {activeView === "auction" && (
+        <div className="feature-content wide">
+          <PageAuctionView isThai={isThai} memberId={session.memberId} members={guild.members} notify={notify} onGoToQueue={() => setActiveView("queue")} />
+        </div>
+      )}
 
       {activeView === "queue" && (
         <div className="feature-content">
@@ -124,11 +117,6 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
       {activeView === "complaint" && (
         <div className="feature-content">
           <ComplaintView isThai={isThai} notify={notify} />
-        </div>
-      )}
-      {activeView === "boardPreview" && (
-        <div className="feature-content wide">
-          <PageAuctionView isThai={isThai} isAdmin={session.isAdmin} memberId={session.memberId} members={guild.members} notify={notify} onGoToQueue={() => setActiveView("queue")} />
         </div>
       )}
       {activeView === "admin" && session.isAdmin && (

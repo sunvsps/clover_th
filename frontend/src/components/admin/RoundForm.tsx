@@ -1,9 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { Plus, Trash2 } from "lucide-react";
-import { CATEGORIES, type Category, type RoundItemInput, type RoundSummary } from "../../api";
-import { categoryLabel } from "../../views/auction/auctionModel";
-import { isHttpsUrl } from "./adminShared";
+import { type Category, type RoundItemInput, type RoundSummary } from "../../api";
+import CategoryDots from "./CategoryDots";
+import { categoryStripe } from "../categoryStyle";
 import type { RoundFormValue } from "./roundFormModel";
+
+const ITEMS_PER_PAGE = 4;
+const MIN_PAGES = 1;
+const MAX_PAGES = 50;
+
+/** Resizes to `pages * ITEMS_PER_PAGE` items named "Item 1" … "Item N", keeping any category already set by clicking. */
+function resizeItems(current: RoundItemInput[], pages: number): RoundItemInput[] {
+  const count = Math.max(MIN_PAGES, Math.min(MAX_PAGES, pages)) * ITEMS_PER_PAGE;
+  return Array.from({ length: count }, (_, i) => ({ name: `Item ${i + 1}`, category: current[i]?.category, rarity: null, imageUrl: null }));
+}
 
 type Props = {
   /** `null` type-picker means a new round; an existing draft keeps its type */
@@ -16,36 +25,84 @@ type Props = {
   onCancel: () => void;
 };
 
-/** Create a round, or edit a draft: type (new only), name, timing, cap (live claim) and the item rows. */
+/**
+ * Create a round, or edit a draft: type (new only), name, timing, cap (live claim) and a page count. Items are
+ * auto-generated ("Item 1" … "Item N", `pages * 4` of them) — no per-item name/rarity/image entry. The preview
+ * below renders each item as a card exactly like the real auction board (see LiveClaimBoard); click a card to
+ * pick its category. Optional for a live-claim round (an untouched item is created without a category); a ranked queue round needs one on every item.
+ */
 export default function RoundForm({ initial, isNew, isThai, busy, error, onSubmit, onCancel }: Props) {
   const t = (en: string, th: string) => (isThai ? th : en);
-  const [v, setV] = useState<RoundFormValue>(initial);
-  const patchItem = (i: number, p: Partial<RoundItemInput>) => setV((cur) => ({ ...cur, items: cur.items.map((it, n) => (n === i ? { ...it, ...p } : it)) }));
-  const badUrl = (url?: string | null) => Boolean(url && url.trim() && !isHttpsUrl(url.trim()));
+  const [pagesInput, setPagesInput] = useState(() => String(Math.max(MIN_PAGES, isNew ? 1 : Math.ceil(initial.items.length / ITEMS_PER_PAGE))));
+  const pages = pagesInput === "" ? MIN_PAGES : Math.max(MIN_PAGES, Math.min(MAX_PAGES, Number(pagesInput) || MIN_PAGES));
+  const [v, setV] = useState<RoundFormValue>(() => (isNew ? { ...initial, items: resizeItems([], pages) } : initial));
+  // Indexes of preview cards the admin unticked (every card starts ticked; a draft being edited keeps its own). A
+  // disabled item is still saved in its slot, so the auction board matches this preview, but it can't be claimed or
+  // ranked there.
+  const [off, setOff] = useState<Set<number>>(() => new Set(isNew ? [] : initial.items.flatMap((item, i) => (item.disabled ? [i] : []))));
+  const enabledItems = v.items.filter((_, i) => !off.has(i));
+  const toggleItem = (index: number) =>
+    setOff((cur) => {
+      const next = new Set(cur);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+
   const problems: string[] = [];
   if (!v.name.trim()) problems.push(t("Give the round a name.", "ตั้งชื่อรอบ"));
   if (v.durationSec < 5 || v.durationSec > 86400) problems.push(t("Duration must be 5 to 86400 seconds.", "ระยะเวลาต้อง 5 ถึง 86400 วินาที"));
   if (v.startDelaySec < 0 || v.startDelaySec > 60) problems.push(t("Start delay must be 0 to 60 seconds.", "เวลาหน่วงก่อนเริ่มต้อง 0 ถึง 60 วินาที"));
-  if (v.items.some((i) => !i.name.trim())) problems.push(t("Every item needs a name.", "ไอเท็มทุกชิ้นต้องมีชื่อ"));
-  if (v.items.some((i) => badUrl(i.imageUrl))) problems.push(t("Image links must be https:// URLs.", "ลิงก์รูปต้องเป็น https:// เท่านั้น"));
-  if (v.type === "queueRanked" && v.items.some((i) => !["gear", "card", "relic"].includes(i.category))) problems.push(t("A queue round accepts only Gear, Card and Relic items.", "รอบคิวรับเฉพาะ Gear, Card และ Relic"));
+  if (enabledItems.length === 0) problems.push(t("Tick at least one item.", "เลือกใช้งานไอเท็มอย่างน้อย 1 ชิ้น"));
+  if (v.type === "queueRanked" && enabledItems.some((i) => !i.category))
+    problems.push(t("A ranked queue round needs a category on every item.", "รอบจัดอันดับคิวต้องระบุหมวดให้ไอเท็มทุกชิ้น"));
+  if (v.type === "liveClaim" && (v.winCap < 1 || v.winCap > 50)) problems.push(t("Items per member must be 1 to 50.", "จำนวนต่อคนต้อง 1 ถึง 50"));
+
+  /** Lets the field go fully blank while typing; a blank field behaves as 1 page (see `pages` above) and is
+   * repainted to "1" on blur so it never submits looking empty. */
+  function handlePagesChange(raw: string) {
+    setPagesInput(raw);
+    const next = raw === "" ? MIN_PAGES : Math.max(MIN_PAGES, Math.min(MAX_PAGES, Number(raw) || MIN_PAGES));
+    setV((cur) => ({ ...cur, items: resizeItems(cur.items, next) }));
+    setOff((cur) => new Set([...cur].filter((i) => i < next * ITEMS_PER_PAGE)));
+  }
+  function handlePagesBlur() {
+    if (pagesInput !== String(pages)) setPagesInput(String(pages));
+  }
+
+  /** Sets (or, with undefined, clears) one item's category. */
+  function setItemCategory(index: number, category: Category | undefined) {
+    setV((cur) => ({ ...cur, items: cur.items.map((item, i) => (i === index ? { ...item, category } : item)) }));
+  }
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (problems.length === 0) onSubmit({ ...v, name: v.name.trim(), items: v.items.map((i) => ({ ...i, name: i.name.trim(), rarity: i.rarity?.trim() || null, imageUrl: i.imageUrl?.trim() || null })) });
+    if (problems.length === 0) onSubmit({ ...v, name: v.name.trim(), items: v.items.map((item, i) => ({ ...item, disabled: off.has(i) })) });
   }
 
   return (
     <form className="round-form" onSubmit={submit} aria-label={isNew ? t("New round", "รอบใหม่") : t("Edit draft round", "แก้ไขรอบฉบับร่าง")}>
       <h3>{isNew ? t("New round", "รอบใหม่") : t("Edit draft round", "แก้ไขรอบฉบับร่าง")}</h3>
+      <div className="type-row">
+        <span id="round-type-label">{t("Type", "ประเภท")}</span>
+        <div className="segmented" role="radiogroup" aria-labelledby="round-type-label">
+          {(["liveClaim", "queueRanked"] as RoundSummary["type"][]).map((type) => (
+            <button
+              type="button"
+              key={type}
+              role="radio"
+              aria-checked={v.type === type}
+              className={v.type === type ? "active" : ""}
+              disabled={!isNew && v.type !== type}
+              onClick={() => isNew && setV({ ...v, type })}
+            >
+              {type === "liveClaim" ? t("Live claim", "จองสด") : t("Ranked queue", "จัดอันดับคิว")}
+            </button>
+          ))}
+        </div>
+        <small>{v.type === "liveClaim" ? t("First come, first served", "ใครมาก่อนได้ก่อน") : t("Allocated by queue order", "แจกตามลำดับคิว")}</small>
+      </div>
       <div className="form-grid">
-        <label>
-          <span>{t("Type", "ประเภท")}</span>
-          <select value={v.type} disabled={!isNew} onChange={(e) => setV({ ...v, type: e.target.value as RoundSummary["type"] })} aria-label={t("Type", "ประเภท")}>
-            <option value="liveClaim">{t("Live claim (first come, first served)", "จองสด (ใครมาก่อนได้ก่อน)")}</option>
-            <option value="queueRanked">{t("Ranked queue", "จัดอันดับตามคิว")}</option>
-          </select>
-        </label>
         <label>
           <span>{t("Name", "ชื่อรอบ")}</span>
           <input type="text" value={v.name} maxLength={100} onChange={(e) => setV({ ...v, name: e.target.value })} aria-label={t("Name", "ชื่อรอบ")} />
@@ -64,29 +121,69 @@ export default function RoundForm({ initial, isNew, isThai, busy, error, onSubmi
             <input type="number" value={v.winCap} min={1} max={50} onChange={(e) => setV({ ...v, winCap: Number(e.target.value) })} aria-label={t("Items per member (cap)", "จำนวนต่อคน (สูงสุด)")} />
           </label>
         )}
+        <label>
+          <span>{t("Pages", "จำนวนหน้า")}</span>
+          <input type="number" value={pagesInput} min={MIN_PAGES} max={MAX_PAGES} onChange={(e) => handlePagesChange(e.target.value)} onBlur={handlePagesBlur} aria-label={t("Pages", "จำนวนหน้า")} />
+        </label>
       </div>
 
-      <h4>{t("Items", "ไอเท็ม")} <small>{v.items.length}</small></h4>
-      <ul className="item-rows">
-        {v.items.map((item, i) => (
-          <li key={i} className="item-row">
-            <input type="text" value={item.name} maxLength={100} placeholder={t("Item name", "ชื่อไอเท็ม")} aria-label={t(`Item ${i + 1} name`, `ชื่อไอเท็ม ${i + 1}`)} onChange={(e) => patchItem(i, { name: e.target.value })} />
-            <select value={item.category} aria-label={t(`Item ${i + 1} category`, `หมวดไอเท็ม ${i + 1}`)} onChange={(e) => patchItem(i, { category: e.target.value as Category })}>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{categoryLabel(c, isThai)}</option>
-              ))}
-            </select>
-            <input type="text" value={item.rarity ?? ""} maxLength={32} placeholder={t("Rarity", "ระดับ")} aria-label={t(`Item ${i + 1} rarity`, `ระดับไอเท็ม ${i + 1}`)} onChange={(e) => patchItem(i, { rarity: e.target.value })} />
-            <input type="url" value={item.imageUrl ?? ""} placeholder="https://…" aria-label={t(`Item ${i + 1} image link`, `ลิงก์รูปไอเท็ม ${i + 1}`)} aria-invalid={badUrl(item.imageUrl)} onChange={(e) => patchItem(i, { imageUrl: e.target.value })} />
-            <button type="button" className="chip-tool remove" aria-label={t(`Remove item ${i + 1}`, `นำไอเท็ม ${i + 1} ออก`)} onClick={() => setV({ ...v, items: v.items.filter((_, n) => n !== i) })}>
-              <Trash2 size={12} />
-            </button>
-          </li>
+      <div className="round-form-preview-head">
+        <h4>
+          {t("Item preview", "ตัวอย่างไอเท็ม")} <small>{enabledItems.length}/{v.items.length}</small>
+        </h4>
+        <div className="round-form-preview-bulk">
+          <button type="button" className="copy-button" disabled={off.size === 0} onClick={() => setOff(new Set())}>
+            {t("Enable all", "เปิดทั้งหมด")}
+          </button>
+          <button type="button" className="copy-button" disabled={off.size === v.items.length} onClick={() => setOff(new Set(v.items.map((_, i) => i)))}>
+            {t("Disable all", "ปิดทั้งหมด")}
+          </button>
+        </div>
+      </div>
+      <p className="form-hint">
+        {v.type === "queueRanked"
+          ? t("Click a color dot to pick a category (click it again to clear). A ranked queue round needs a category on every item.", "กดจุดสีเพื่อเลือกหมวด (กดซ้ำเพื่อยกเลิก) รอบจัดอันดับคิวต้องระบุหมวดทุกชิ้น")
+          : t("Click a color dot to pick a category (click it again to clear) — optional; an item left unset is created without one.", "กดจุดสีเพื่อเลือกหมวด (กดซ้ำเพื่อยกเลิก) ไม่บังคับ — ถ้าไม่เลือก ไอเท็มจะไม่มีหมวด")}{" "}
+        {t("Untick a card to disable that item: it keeps its slot but can't be reserved.", "เอาติ๊กออกเพื่อปิดใช้งานไอเท็มนั้น: ยังอยู่ในช่องเดิมแต่จองไม่ได้")}
+      </p>
+      <div className="round-form-preview">
+        {Array.from({ length: pages }, (_, page) => (
+          <section key={page} aria-label={`Page ${page + 1}`}>
+            <p className="round-form-preview-page">{t(`Page ${page + 1}`, `หน้า ${page + 1}`)}</p>
+            <div className="item-grid">
+              {v.items.slice(page * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE + ITEMS_PER_PAGE).map((item, i) => {
+                const index = page * ITEMS_PER_PAGE + i;
+                const enabled = !off.has(index);
+                return (
+                  <div className={`item-card available ${enabled ? categoryStripe(item.category) : "cat-stripe item-off"}`} key={item.name}>
+                    <input
+                      type="checkbox"
+                      className="item-enable"
+                      checked={enabled}
+                      onChange={() => toggleItem(index)}
+                      aria-label={t(`Use ${item.name}`, `ใช้ ${item.name}`)}
+                      title={enabled ? t("Enabled — untick to disable", "ใช้งาน — เอาติ๊กออกเพื่อปิด") : t("Disabled — tick to enable", "ปิดใช้งาน — ติ๊กเพื่อเปิด")}
+                    />
+                    <div className="item-info">
+                      <h3>{item.name}</h3>
+                      {enabled ? (
+                        <CategoryDots
+                          value={item.category}
+                          isThai={isThai}
+                          label={t(`${item.name} category`, `หมวดของ ${item.name}`)}
+                          onChange={(category) => setItemCategory(index, category)}
+                        />
+                      ) : (
+                        <span className="cat-pill none">{t("Disabled", "ปิดใช้งาน")}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         ))}
-      </ul>
-      <button type="button" className="copy-button" onClick={() => setV({ ...v, items: [...v.items, { name: "", category: v.items.at(-1)?.category ?? "pet", rarity: "", imageUrl: "" }] })}>
-        <Plus size={13} /> {t("Add item", "เพิ่มไอเท็ม")}
-      </button>
+      </div>
 
       {problems.map((p) => (
         <p className="form-error" key={p} role="note">{p}</p>

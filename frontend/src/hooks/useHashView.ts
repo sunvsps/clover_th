@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
-export type GuildView = "auction" | "queue" | "calendar" | "teams" | "complaint" | "admin" | "boardPreview";
+export type GuildView = "auction" | "queue" | "calendar" | "teams" | "complaint" | "admin";
 
 export function viewFromHash(): GuildView {
   const hash = window.location.hash.replace("#", "");
-  return hash === "queue" || hash === "calendar" || hash === "teams" || hash === "complaint" || hash === "admin" || hash === "boardPreview"
+  return hash === "queue" || hash === "calendar" || hash === "teams" || hash === "complaint" || hash === "admin"
     ? hash
     : "auction";
 }

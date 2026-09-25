@@ -57,6 +57,7 @@ const messages: Record<string, Text> = {
   ROUND_TYPE_MISMATCH: { en: "That action does not apply to this kind of round.", th: "การกระทำนี้ใช้กับรอบประเภทนี้ไม่ได้" },
   INVALID_CATEGORY_FOR_TYPE: { en: "A queue round accepts only Gear, Card and Relic items.", th: "รอบคิวรับเฉพาะ Gear, Card และ Relic" },
   ITEM_ALREADY_CLAIMED: { en: "Someone else got this item first.", th: "มีคนจองไอเท็มนี้ไปก่อนแล้ว" },
+  ITEM_DISABLED: { en: "This item is disabled in this round.", th: "ไอเท็มนี้ถูกปิดใช้งานในรอบนี้" },
   CLAIM_CAP_REACHED: { en: "You have reached the claim limit for this round.", th: "คุณจองครบตามจำนวนสูงสุดในรอบนี้แล้ว" },
   NOT_YOUR_CLAIM: { en: "That item is claimed by someone else.", th: "ไอเท็มนี้เป็นของคนอื่น" },
   NOT_ELIGIBLE_FOR_CATEGORY: { en: "You were not in that queue when the round opened.", th: "คุณไม่ได้อยู่ในคิวนี้ตอนเปิดรอบ" },
