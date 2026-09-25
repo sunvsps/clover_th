@@ -402,6 +402,11 @@ button.subteam-slot.empty.compact { cursor: pointer; color: #9db095; }
 .layout-teams input[type=number] { width: 70px; }
 .audit-list pre { margin: 6px 0 0; max-width: 100%; overflow: auto; font-size: 11px; }
 .prefs-view { margin-top: 16px; }
+.complaint-view .round-form label { display: grid; gap: 4px; margin-bottom: 10px; font-size: 11px; color: #7c8879; }
+.complaint-view .round-form input, .complaint-view .round-form textarea { padding: 9px 10px; color: #e8eee6; background: #202a1f; border: 1px solid #465b40; border-radius: 5px; outline: none; font: 13px 'Anuphan', 'Manrope', sans-serif; resize: vertical; }
+.complaint-view .round-form input:focus, .complaint-view .round-form textarea:focus { border-color: #b9e86d; }
+[data-admin="complaints"] .admin-list > li { display: block; }
+[data-admin="complaints"] .admin-row-main p { margin: 6px 0 0; color: #e8eee6; font-size: 13px; white-space: pre-wrap; }
 .job-summary > li { justify-content: flex-start; }
 @media (max-width: 480px) {
   .item-row { grid-template-columns: 1fr 1fr; }

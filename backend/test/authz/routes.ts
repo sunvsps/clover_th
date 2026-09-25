@@ -259,4 +259,17 @@ export const routes: RouteSpec[] = [
     url: '/api/v1/admin/auctions/rounds/999999/preferences',
     auth: 'admin',
   },
+  {
+    method: 'POST',
+    pattern: '/api/v1/complaints',
+    url: '/api/v1/complaints',
+    auth: 'member',
+    payload: { title: 'title', description: 'description' },
+  },
+  {
+    method: 'GET',
+    pattern: '/api/v1/admin/complaints',
+    url: '/api/v1/admin/complaints',
+    auth: 'admin',
+  },
 ];

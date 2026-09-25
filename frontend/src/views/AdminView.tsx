@@ -4,6 +4,7 @@ import type { WireActivity } from "../api";
 import ActivitiesAdmin from "../components/admin/ActivitiesAdmin";
 import AuctionAdmin from "../components/admin/AuctionAdmin";
 import AuditAdmin from "../components/admin/AuditAdmin";
+import ComplaintsAdmin from "../components/admin/ComplaintsAdmin";
 import JobsAdmin from "../components/admin/JobsAdmin";
 import LayoutAdmin from "../components/admin/LayoutAdmin";
 import MembersAdmin from "../components/admin/MembersAdmin";
@@ -22,7 +23,7 @@ type Props = {
   notify: (message: string) => void;
 };
 
-type Tab = "auctions" | "members" | "activities" | "layout" | "jobs" | "notifications" | "audit";
+type Tab = "auctions" | "members" | "activities" | "layout" | "jobs" | "notifications" | "complaints" | "audit";
 
 /**
  * The admin page (only rendered for admins; the server still enforces every call). It has no control to grant admin
@@ -38,6 +39,7 @@ export default function AdminView({ isThai, jobs, members, activities, onSaveJob
     ["layout", t("Team layout", "โครงสร้างทีม")],
     ["jobs", t("Jobs", "อาชีพ")],
     ["notifications", t("Notifications", "การแจ้งเตือน")],
+    ["complaints", t("Complaints", "ร้องเรียน")],
     ["audit", t("Audit log", "บันทึกการทำงาน")],
   ];
   return (
@@ -59,6 +61,7 @@ export default function AdminView({ isThai, jobs, members, activities, onSaveJob
       {tab === "layout" && <LayoutAdmin isThai={isThai} activities={activities} onChanged={() => {}} notify={notify} />}
       {tab === "jobs" && <JobsAdmin isThai={isThai} jobs={jobs} members={members} onSaveJobs={onSaveJobs} />}
       {tab === "notifications" && <NotificationsAdmin isThai={isThai} notify={notify} />}
+      {tab === "complaints" && <ComplaintsAdmin isThai={isThai} />}
       {tab === "audit" && <AuditAdmin isThai={isThai} members={members} />}
     </section>
   );
