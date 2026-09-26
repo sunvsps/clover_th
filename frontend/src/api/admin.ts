@@ -136,6 +136,8 @@ export const updateRound = async (id: number, input: RoundInput & { type: RoundS
 export const startRound = async (id: number, opts: { startDelaySec?: number; durationSec?: number } = {}) => summaryOf(await post<WireRoundOut>(`/api/v1/admin/auctions/rounds/${id}/start`, opts));
 export const closeRound = async (id: number) => summaryOf(await post<WireRoundOut>(`/api/v1/admin/auctions/rounds/${id}/close`));
 export const cancelRound = async (id: number) => summaryOf(await post<WireRoundOut>(`/api/v1/admin/auctions/rounds/${id}/cancel`));
+/** Leftover draft of a closed live-claim round: made once (asking again returns the same round), claimed items disabled. */
+export const createLeftoverDraft = async (id: number) => summaryOf(await post<WireRoundOut>(`/api/v1/admin/auctions/rounds/${id}/leftover`));
 export async function getRoundPreferences(id: number): Promise<{ memberId: string; itemIds: number[] }[]> {
   return (await get<{ lists: { memberId: string; itemIds: number[] }[] }>(`/api/v1/admin/auctions/rounds/${id}/preferences`)).lists;
 }

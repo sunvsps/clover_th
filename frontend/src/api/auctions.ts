@@ -49,7 +49,13 @@ export type RoundSummary = {
   opensAt: string | null;
   closesAt: string | null;
 };
-export type RoundListEntry = RoundSummary & { itemCount: number };
+export type RoundListEntry = RoundSummary & {
+  itemCount: number;
+  /** a leftover round: the round it was made from */
+  sourceRoundId: number | null;
+  /** a leftover round was already made from this round */
+  leftoverRoundId: number | null;
+};
 export type Round = RoundSummary & {
   items: AuctionItem[];
   myWinCount: number;
@@ -86,7 +92,7 @@ const roundFromWire = (r: WireRound): Round => ({
 
 export async function listRounds(signal?: AbortSignal): Promise<RoundListEntry[]> {
   const body = await get<WireRoundList>("/api/v1/auctions/rounds", { signal });
-  return body.rounds.map((r) => ({ ...summaryFromWire(r), itemCount: r.itemCount }));
+  return body.rounds.map((r) => ({ ...summaryFromWire(r), itemCount: r.itemCount, sourceRoundId: r.sourceRoundId, leftoverRoundId: r.leftoverRoundId }));
 }
 
 /** One poll of a round: `null` = 304, nothing changed since `etag`. */

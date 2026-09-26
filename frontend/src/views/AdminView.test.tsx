@@ -38,7 +38,7 @@ describe("who can see the admin page", () => {
     mockApi({ me: meUser });
     render(<App />);
     await screen.findByRole("navigation", { name: "Guild tools" });
-    expect(screen.queryByRole("button", { name: "Admin" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Admin config" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("admin-page")).not.toBeInTheDocument();
   });
 
@@ -46,7 +46,7 @@ describe("who can see the admin page", () => {
     mockApi({ me: meAdmin });
     fakeAdmin({ me: meAdmin });
     render(<App />);
-    await userEvent.setup({ delay: null }).click(await screen.findByRole("button", { name: "Admin" }));
+    await userEvent.setup({ delay: null }).click(await screen.findByRole("button", { name: "Admin config" }));
     expect(await screen.findByTestId("admin-page")).toBeInTheDocument();
   });
 
@@ -67,7 +67,7 @@ describe("who can see the admin page", () => {
     }
     await tab(user, "Members");
     await screen.findByText("Aria");
-    expect(screen.getByText(/Admin/, { selector: ".admin-badge" })).toBeInTheDocument(); // a read-only badge
+    expect(screen.getByText("ADMIN", { selector: ".admin-badge" })).toBeInTheDocument(); // a read-only badge
     expect(document.querySelector('input[type=checkbox][aria-label*="admin" i]')).toBeNull();
   });
 });
@@ -76,10 +76,12 @@ describe("members", () => {
   it("edits the nickname (PATCH with the member id), shows the incomplete flag, and filters", async () => {
     const { fake, user, notify } = setup(meAdmin);
     await tab(user, "Members");
-    const row = await screen.findByText("Bo").then((e) => e.closest("li") as HTMLElement);
+    const row = await screen.findByText("Bo").then((e) => e.closest("tr") as HTMLElement);
     await user.click(within(row).getByRole("button", { name: "Edit" }));
-    await user.type(within(row).getByLabelText("Nickname"), "Bobo");
-    await user.click(within(row).getByRole("button", { name: "Save" }));
+    const editor = screen.getByRole("dialog");
+    await user.type(within(editor).getByLabelText("Nickname"), "Bobo");
+    await user.click(within(editor).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Member saved."));
     const patch = fake.calls.find((c) => c.method === "PATCH")!;
     expect(patch.path).toMatch(/admin\/members\/m-bo$/);
@@ -93,16 +95,16 @@ describe("members", () => {
   it("deactivate keeps the member visible only with 'include deactivated'; an admin cannot deactivate themselves", async () => {
     const { fake, user } = setup(meAdmin);
     await tab(user, "Members");
-    const own = await screen.findByText("Aria").then((e) => e.closest("li") as HTMLElement);
+    const own = await screen.findByText("Aria").then((e) => e.closest("tr") as HTMLElement);
     await user.click(within(own).getByRole("button", { name: "Deactivate" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("You cannot deactivate your own account.");
     await new Promise((r) => setTimeout(r, 80)); // the reload that follows must not wipe the message
     expect(screen.getByRole("alert")).toHaveTextContent("You cannot deactivate your own account.");
-    const bo = screen.getByText("Bo").closest("li") as HTMLElement;
+    const bo = screen.getByText("Bo").closest("tr") as HTMLElement;
     await user.click(within(bo).getByRole("button", { name: "Deactivate" }));
     await waitFor(() => expect(screen.queryByText("Bo")).not.toBeInTheDocument());
     await user.click(screen.getByLabelText("Include deactivated"));
-    const back = await screen.findByText("Bo").then((e) => e.closest("li") as HTMLElement);
+    const back = await screen.findByText("Bo").then((e) => e.closest("tr") as HTMLElement);
     expect(back).toHaveTextContent("Deactivated");
     await user.click(within(back).getByRole("button", { name: "Reactivate" }));
     await waitFor(() => expect(fake.members.find((m) => m.ign === "Bo")!.isActive).toBe(true));
@@ -111,13 +113,15 @@ describe("members", () => {
   it("a duplicate in-game name shows the translated error", async () => {
     const { user } = setup(meAdmin);
     await tab(user, "Members");
-    const row = await screen.findByText("Bo").then((e) => e.closest("li") as HTMLElement);
+    const row = await screen.findByText("Bo").then((e) => e.closest("tr") as HTMLElement);
     await user.click(within(row).getByRole("button", { name: "Edit" }));
-    const ign = within(row).getByLabelText("In-game name");
+    const editor = screen.getByRole("dialog");
+    const ign = within(editor).getByLabelText("In-game name");
     await user.clear(ign);
     await user.type(ign, "aria");
-    await user.click(within(row).getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("That in-game name is already used by another member.");
+    await user.click(within(editor).getByRole("button", { name: "Save" }));
+    expect(await within(editor).findByRole("alert")).toHaveTextContent("That in-game name is already used by another member.");
+    expect(screen.getByRole("dialog")).toBeInTheDocument(); // the edit stays open to fix
   });
 });
 
@@ -178,35 +182,30 @@ describe("jobs", () => {
   it("a rename is saved through PUT /admin/jobs (existing ids kept, new job without id) and the list updates", async () => {
     const { fake, user, notify } = setup(meAdmin);
     await tab(user, "Jobs");
-    await user.click(await screen.findByRole("button", { name: /Manage jobs/ }));
-    const dialog = screen.getByRole("dialog");
-    const names = within(dialog).getAllByLabelText("Job name");
+    const names = await screen.findAllByLabelText("Job name");
     await user.clear(names[1]!);
     await user.type(names[1]!, "Crusader");
-    await user.type(within(dialog).getByPlaceholderText("New job name"), "Bard");
-    await user.click(within(dialog).getByRole("button", { name: /Add to list/ }));
-    await user.click(within(dialog).getByRole("button", { name: /Save/ }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.type(screen.getByPlaceholderText("New job name"), "Bard");
+    await user.click(screen.getByRole("button", { name: /Add to list/ }));
+    await user.click(screen.getByRole("button", { name: /Save/ }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Job list saved."));
     const jobs = (fake.calls.find((c) => c.method === "PUT")!.body as { jobs: { id?: number; label: string }[] }).jobs;
     expect(jobs[1]).toMatchObject({ id: 2, label: "Crusader" });
     expect(jobs.at(-1)).toMatchObject({ label: "Bard" });
     expect(jobs.at(-1)!.id).toBeUndefined();
-    expect(notify).toHaveBeenCalledWith("Job list saved.");
-    expect(screen.getByText("Crusader")).toBeInTheDocument();
-    expect(screen.getByText("Bard")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("Crusader")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Bard")).toBeInTheDocument();
   });
 
-  it("a duplicate label found by the server is shown in the dialog and the draft stays open", async () => {
+  it("a duplicate label found by the server is shown and the draft stays", async () => {
     const { user } = setup(meAdmin, { duplicateLabel: "Taken" });
     await tab(user, "Jobs");
-    await user.click(await screen.findByRole("button", { name: /Manage jobs/ }));
-    const dialog = screen.getByRole("dialog");
-    const names = within(dialog).getAllByLabelText("Job name");
+    const names = await screen.findAllByLabelText("Job name");
     await user.clear(names[0]!);
     await user.type(names[0]!, "Taken");
-    await user.click(within(dialog).getByRole("button", { name: /Save/ }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("A job with that name already exists.");
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Save/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A job with that name already exists.");
+    expect(screen.getByDisplayValue("Taken")).toBeInTheDocument();
   });
 });
 
@@ -214,11 +213,11 @@ describe("notifications", () => {
   it("lists them with counts, and a DEAD one can be retried", async () => {
     const { fake, user, notify } = setup(meAdmin, { notifications: [{ id: 1, status: "SENT" }, { id: 2, status: "DEAD" }] });
     await tab(user, "Notifications");
-    const dead = await screen.findByText(/#2/).then((e) => e.closest("li") as HTMLElement);
+    const dead = await screen.findByText(/#2/).then((e) => e.closest("tr") as HTMLElement);
     expect(dead).toHaveTextContent("Failed");
     expect(dead).toHaveTextContent("Cannot send messages to this user");
     expect(screen.getByText(/Failed 1/)).toBeInTheDocument();
-    expect(within(screen.getByText(/#1/).closest("li") as HTMLElement).queryByRole("button", { name: /Retry/ })).not.toBeInTheDocument();
+    expect(within(screen.getByText(/#1/).closest("tr") as HTMLElement).queryByRole("button", { name: /Retry/ })).not.toBeInTheDocument();
     await user.click(within(dead).getByRole("button", { name: "Retry notification 2" }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Notification #2 queued to be sent again."));
     expect(fake.calls.find((c) => c.path.endsWith("/notifications/2/retry"))!.method).toBe("POST");
@@ -267,7 +266,7 @@ describe("auction management", () => {
       { name: "Item 3", category: null, rarity: null, imageUrl: null, disabled: false },
       { name: "Item 4", category: null, rarity: null, imageUrl: null, disabled: false },
     ]);
-    const row = await screen.findByText(/Friday drops/).then((e) => e.closest("li") as HTMLElement);
+    const row = await screen.findByText(/Friday drops/).then((e) => e.closest("tr") as HTMLElement);
     expect(row).toHaveTextContent("Draft");
     await user.click(within(row).getByRole("button", { name: "Start…" }));
     await user.click(within(row).getByRole("button", { name: "Start round" }));
@@ -307,8 +306,8 @@ describe("auction management", () => {
     const { fake, user } = setup(meAdmin);
     await user.click(await screen.findByRole("button", { name: "New round" }));
     await user.type(screen.getByLabelText("Name"), "R");
-    await user.click(screen.getByRole("checkbox", { name: "Use Item 2" }));
-    expect(screen.getByRole("checkbox", { name: "Use Item 2" })).not.toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "Use Item 2 on page 1" }));
+    expect(screen.getByRole("checkbox", { name: "Use Item 2 on page 1" })).not.toBeChecked();
     await user.click(screen.getByRole("button", { name: "Create round" }));
     await waitFor(() => expect(fake.calls.some((c) => c.method === "POST" && c.path.endsWith("/admin/auctions/rounds"))).toBe(true));
     const post = fake.calls.find((c) => c.method === "POST" && c.path.endsWith("/admin/auctions/rounds"))!;
@@ -343,7 +342,7 @@ describe("auction management", () => {
 
   it("a draft can be edited and saved (PATCH)", async () => {
     const { fake, user } = setup(meAdmin, { rounds: [draftRound] });
-    const row = await screen.findByText(/Old draft/).then((e) => e.closest("li") as HTMLElement);
+    const row = await screen.findByText(/Old draft/).then((e) => e.closest("tr") as HTMLElement);
     await user.click(within(row).getByRole("button", { name: "Edit" }));
     const name = await screen.findByLabelText("Name");
     await user.clear(name);
@@ -352,25 +351,46 @@ describe("auction management", () => {
     await waitFor(() => expect(fake.calls.find((c) => c.method === "PATCH" && c.path.includes("auctions/rounds"))!.body).toMatchObject({ name: "New name" }));
   });
 
-  it("starting the leftover draft while another round of that type is open explains ANOTHER_ROUND_OPEN", async () => {
-    const closed = { ...draftRound, id: 1, name: "Queue round", type: "QUEUE_RANKED" as const, status: "CLOSED" as const, winCap: null, leftoverRoundId: 2 };
-    const leftover = { ...draftRound, id: 2, name: "Queue round (leftovers)", type: "QUEUE_RANKED" as const, winCap: null };
-    const open = { ...draftRound, id: 3, name: "Another queue round", type: "QUEUE_RANKED" as const, status: "OPEN" as const, winCap: null };
-    const { user } = setup(meAdmin, { rounds: [closed, leftover, open] });
-    const closedRow = await screen.findByText(/#1 Queue round$/).then((e) => e.closest("li") as HTMLElement);
+  it("a closed live-claim round makes a leftover draft with the claimed items disabled, and opens it", async () => {
+    const closed = { ...draftRound, id: 1, name: "Friday", status: "CLOSED" as const, items: [{ id: 1, name: "Item 1", category: null, rarity: null, imageUrl: null, claimed: true }, { id: 2, name: "Item 2", category: null, rarity: null, imageUrl: null }] };
+    const { fake, user } = setup(meAdmin, { rounds: [closed] });
+    const row = await screen.findByText(/#1 Friday$/).then((e) => e.closest("tr") as HTMLElement);
+    await user.click(within(row).getByRole("button", { name: "Leftover draft" }));
+    await screen.findByRole("form", { name: "Edit draft round" });
+    expect(fake.calls.filter((c) => c.path.endsWith("/rounds/1/leftover"))).toHaveLength(1);
+    expect(screen.getByRole("checkbox", { name: "Use Item 1 on page 1" })).not.toBeChecked(); // claimed in round #1
+    expect(screen.getByRole("checkbox", { name: "Use Item 2 on page 1" })).toBeChecked();    await waitFor(() => expect(within(row).queryByRole("button", { name: "Leftover draft" })).not.toBeInTheDocument()); // once only
+    expect((await screen.findByText(/leftovers/)).closest("tr")).toHaveTextContent("from #1");
+  });
+
+  it("only a closed live-claim round that is not itself a leftover (and has none yet) offers a leftover draft", async () => {
+    const queue = { ...draftRound, id: 1, name: "Queue round", type: "QUEUE_RANKED" as const, status: "CLOSED" as const, winCap: null };
+    const open = { ...draftRound, id: 2, name: "Live now", status: "OPEN" as const };
+    const repeated = { ...draftRound, id: 3, name: "Friday", status: "CLOSED" as const, leftoverRoundId: 4 };
+    const leftover = { ...draftRound, id: 4, name: "Friday (leftovers)", status: "CLOSED" as const, sourceRoundId: 3 };
+    setup(meAdmin, { rounds: [queue, open, repeated, leftover] });
+    await screen.findByText(/#2 Live now$/);
+    expect(screen.queryByRole("button", { name: "Leftover draft" })).not.toBeInTheDocument();
+  });
+
+  it("starting the leftover draft while another live-claim round is open explains ANOTHER_ROUND_OPEN", async () => {
+    const closed = { ...draftRound, id: 1, name: "Friday", status: "CLOSED" as const };
+    const open = { ...draftRound, id: 3, name: "Another round", status: "OPEN" as const };
+    const { user } = setup(meAdmin, { rounds: [closed, open] });
+    const closedRow = await screen.findByText(/#1 Friday$/).then((e) => e.closest("tr") as HTMLElement);
     await user.click(within(closedRow).getByRole("button", { name: "Leftover draft" }));
-    await screen.findByRole("form", { name: "Edit draft round" }); // the leftover draft is opened for review
+    await screen.findByRole("form", { name: "Edit draft round" });
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    const draftRow = screen.getByText(/leftovers/).closest("li") as HTMLElement;
+    const draftRow = (await screen.findByText(/leftovers/)).closest("tr") as HTMLElement;
     await user.click(within(draftRow).getByRole("button", { name: "Start…" }));
     await user.click(within(draftRow).getByRole("button", { name: "Start round" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Another ranked queue round (#3) is already open. Only one round of each type can be open at a time: close it first, then start this one.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Another live claim round (#3) is already open. Only one round of each type can be open at a time: close it first, then start this one.");
   });
 
   it("shows every member's preference list of a queue round", async () => {
     const queue = { ...draftRound, id: 1, name: "Q", type: "QUEUE_RANKED" as const, status: "OPEN" as const, winCap: null, items: [{ id: 1, name: "Gear 1", category: "GEAR", rarity: null, imageUrl: null }, { id: 2, name: "Gear 2", category: "GEAR", rarity: null, imageUrl: null }] };
     const { user } = setup(meAdmin, { rounds: [queue] });
     await user.click(await screen.findByRole("button", { name: "Preference lists" }));
-    expect(await screen.findByTestId("prefs-view")).toHaveTextContent("Bo: 1. Gear 2 2. Gear 1");
+    expect(await screen.findByTestId("prefs-view")).toHaveTextContent("Bo: 1. Page 1 / Item 2 2. Page 1 / Item 1");
   });
 });

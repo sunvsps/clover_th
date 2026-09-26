@@ -1,4 +1,4 @@
-import { CalendarDays, Check, ListOrdered, MessageSquareWarning, Package, Shield, Users, X } from "lucide-react";
+import { CalendarDays, Check, ListOrdered, MessageSquareWarning, Package, Settings, Users, X } from "lucide-react";
 import { getMembers, type GuildData } from "../api";
 import WeeklySchedule from "../components/WeeklySchedule";
 import TeamPlanner from "../components/TeamPlanner";
@@ -62,8 +62,8 @@ export default function Workspace({ session, data, isThai, onToggleLanguage, not
           <MessageSquareWarning size={15} /> {isThai ? "ร้องทุกข์" : "Complaint"}
         </button>
         {session.isAdmin && (
-          <button className={activeView === "admin" ? "active" : ""} type="button" onClick={() => setActiveView("admin")}>
-            <Shield size={15} /> {isThai ? "แอดมิน" : "Admin"}
+          <button className={`admin-tab ${activeView === "admin" ? "active" : ""}`} type="button" onClick={() => setActiveView("admin")}>
+            <Settings size={15} /> {isThai ? "ตั้งค่าแอดมิน" : "Admin config"}
           </button>
         )}
       </nav>

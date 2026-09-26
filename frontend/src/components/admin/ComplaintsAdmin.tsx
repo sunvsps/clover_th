@@ -11,22 +11,34 @@ export default function ComplaintsAdmin({ isThai }: Props) {
 
   return (
     <div className="admin-section" data-admin="complaints">
-      <div className="admin-toolbar">
-        <h3>{t("Complaints", "ร้องเรียน")}</h3>
-      </div>
       {polled.error && <p className="form-error" role="alert">{polled.error.userMessage(isThai)}</p>}
-      <ul className="admin-list">
-        {rows.map((c) => (
-          <li key={c.id} data-complaint={c.id}>
-            <div className="admin-row-main">
-              <strong>{c.title}</strong>
-              <small>{c.memberIgn} · {bangkokStamp(c.createdAt)}</small>
-              <p>{c.description}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-      {polled.data && rows.length === 0 && <p className="empty-search">{t("No complaints filed yet.", "ยังไม่มีเรื่องร้องเรียน")}</p>}
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{t("Time", "เวลา")}</th>
+              <th>{t("Member", "สมาชิก")}</th>
+              <th>{t("Title", "หัวข้อ")}</th>
+              <th>{t("Details", "รายละเอียด")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.id} data-complaint={c.id}>
+                <td className="mono">{bangkokStamp(c.createdAt)}</td>
+                <td>{c.memberIgn}</td>
+                <td><strong>{c.title}</strong></td>
+                <td className="complaint-text">{c.description}</td>
+              </tr>
+            ))}
+            {polled.data && rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="empty-search">{t("No complaints filed yet.", "ยังไม่มีเรื่องร้องเรียน")}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

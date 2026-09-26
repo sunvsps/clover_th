@@ -154,6 +154,9 @@ export default function RoundForm({ initial, isNew, isThai, busy, error, onSubmi
               {v.items.slice(page * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE + ITEMS_PER_PAGE).map((item, i) => {
                 const index = page * ITEMS_PER_PAGE + i;
                 const enabled = !off.has(index);
+                // numbered 1-4 within each page; the saved name stays "Item N" (N = position in the whole round)
+                const label = `Item ${i + 1}`;
+                const where = t(`${label} on page ${page + 1}`, `${label} หน้า ${page + 1}`);
                 return (
                   <div className={`item-card available ${enabled ? categoryStripe(item.category) : "cat-stripe item-off"}`} key={item.name}>
                     <input
@@ -161,16 +164,16 @@ export default function RoundForm({ initial, isNew, isThai, busy, error, onSubmi
                       className="item-enable"
                       checked={enabled}
                       onChange={() => toggleItem(index)}
-                      aria-label={t(`Use ${item.name}`, `ใช้ ${item.name}`)}
+                      aria-label={t(`Use ${where}`, `ใช้ ${where}`)}
                       title={enabled ? t("Enabled — untick to disable", "ใช้งาน — เอาติ๊กออกเพื่อปิด") : t("Disabled — tick to enable", "ปิดใช้งาน — ติ๊กเพื่อเปิด")}
                     />
                     <div className="item-info">
-                      <h3>{item.name}</h3>
+                      <h3>{label}</h3>
                       {enabled ? (
                         <CategoryDots
                           value={item.category}
                           isThai={isThai}
-                          label={t(`${item.name} category`, `หมวดของ ${item.name}`)}
+                          label={t(`${where} category`, `หมวดของ ${where}`)}
                           onChange={(category) => setItemCategory(index, category)}
                         />
                       ) : (

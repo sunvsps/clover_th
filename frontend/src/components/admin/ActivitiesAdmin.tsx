@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { updateActivity, type WireActivity } from "../../api";
 import { adminErrorText } from "./adminShared";
 
@@ -52,36 +53,55 @@ export default function ActivitiesAdmin({ isThai, activities, onChanged, notify 
 
   return (
     <div className="admin-section" data-admin="activities">
-      <h3>{t("Activity settings", "ตั้งค่ากิจกรรม")}</h3>
-      <ul className="admin-list">
-        {activities.map((a) => {
-          const d = draftOf(a);
-          const capBad = d.capacity.trim() !== "" && (!Number.isInteger(Number(d.capacity)) || Number(d.capacity) < 1);
-          return (
-            <li key={a.id} data-activity={a.id}>
-              <div className="admin-row-main">
-                <strong>{a.name}</strong>
-                <small>{a.hasPlanner ? t(`Team planner · ${a.layoutCapacity} slots`, `จัดทีมได้ · ${a.layoutCapacity} ช่อง`) : t("No team planner", "ไม่มีการจัดทีม")}</small>
-              </div>
-              <div className="settings-grid">
-                <label><span>{t("Capacity (empty = no limit)", "จำนวนที่รับ (ว่าง = ไม่จำกัด)")}</span>
-                  <input type="number" min={1} value={d.capacity} onChange={(e) => patch(a, { capacity: e.target.value })} aria-label={t(`${a.name} capacity`, `จำนวนที่รับของ ${a.name}`)} aria-invalid={capBad} />
-                </label>
-                <label className="check">
-                  <input type="checkbox" checked={d.autoBackfill} disabled={!a.hasPlanner} onChange={(e) => patch(a, { autoBackfill: e.target.checked })} aria-label={t(`${a.name} auto-backfill`, `เติมช่องอัตโนมัติของ ${a.name}`)} />
-                  {t("Auto-backfill from reserves", "เติมช่องจากสำรองอัตโนมัติ")}
-                  {!a.hasPlanner && <small> ({t("needs a team planner", "ต้องมีการจัดทีม")})</small>}
-                </label>
-                <label><span>{t("Notification channel id", "ไอดีช่องแจ้งเตือน")}</span>
-                  <input type="text" value={d.channel} maxLength={32} onChange={(e) => patch(a, { channel: e.target.value })} aria-label={t(`${a.name} notification channel`, `ช่องแจ้งเตือนของ ${a.name}`)} />
-                </label>
-                <button type="button" className="admin-button" disabled={busy === a.id || capBad || !drafts[a.id]} onClick={() => void save(a)} aria-label={t(`Save ${a.name}`, `บันทึก ${a.name}`)}>{t("Save", "บันทึก")}</button>
-              </div>
-              {errors[a.id] && <p className="form-error" role="alert">{errors[a.id]}</p>}
-            </li>
-          );
-        })}
-      </ul>
+      {Object.entries(errors).filter(([, text]) => text).map(([id, text]) => (
+        <p className="form-error" role="alert" key={id}>{activities.find((a) => a.id === id)?.name}: {text}</p>
+      ))}
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{t("Activity", "กิจกรรม")}</th>
+              <th>{t("Capacity (blank = unlimited)", "รับสูงสุด (ว่าง = ไม่จำกัด)")}</th>
+              <th>{t("Planner", "จัดทีม")}</th>
+              <th>{t("Auto-backfill", "เลื่อนสำรองอัตโนมัติ")}</th>
+              <th>{t("Notify channel id", "Channel แจ้งเตือน")}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {activities.map((a) => {
+              const d = draftOf(a);
+              const capBad = d.capacity.trim() !== "" && (!Number.isInteger(Number(d.capacity)) || Number(d.capacity) < 1);
+              return (
+                <tr key={a.id} data-activity={a.id}>
+                  <td>
+                    <strong>{a.name}</strong>
+                    {a.isGuild && <em className="tag">GUILD</em>}
+                  </td>
+                  <td>
+                    <input className="small-input" type="number" min={1} value={d.capacity} placeholder="—" onChange={(e) => patch(a, { capacity: e.target.value })} aria-label={t(`${a.name} capacity`, `จำนวนที่รับของ ${a.name}`)} aria-invalid={capBad} />
+                  </td>
+                  <td>{a.hasPlanner ? t(`yes · ${a.layoutCapacity} slots`, `มี · ${a.layoutCapacity} ช่อง`) : "—"}</td>
+                  <td>
+                    <label className="check" title={a.hasPlanner ? undefined : t("needs a team planner", "ต้องมีการจัดทีม")}>
+                      <input type="checkbox" checked={d.autoBackfill} disabled={!a.hasPlanner} onChange={(e) => patch(a, { autoBackfill: e.target.checked })} aria-label={t(`${a.name} auto-backfill`, `เติมช่องอัตโนมัติของ ${a.name}`)} />
+                      {!a.hasPlanner && <small className="muted">{t("needs a team planner", "ต้องมีการจัดทีม")}</small>}
+                    </label>
+                  </td>
+                  <td>
+                    <input className="small-input wide" type="text" value={d.channel} maxLength={32} placeholder="—" onChange={(e) => patch(a, { channel: e.target.value })} aria-label={t(`${a.name} notification channel`, `ช่องแจ้งเตือนของ ${a.name}`)} />
+                  </td>
+                  <td className="row-actions">
+                    <button type="button" className="admin-button" disabled={busy === a.id || capBad || !drafts[a.id]} onClick={() => void save(a)} aria-label={t(`Save ${a.name}`, `บันทึก ${a.name}`)}>
+                      <Check size={12} /> {t("Save", "บันทึก")}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

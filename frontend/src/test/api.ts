@@ -334,7 +334,7 @@ export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () 
 
   server.use(
     http.get("*/api/v1/auctions/rounds", () =>
-      HttpResponse.json({ serverTime: new Date(opts.serverNow()).toISOString(), rounds: [...rounds.values()].filter((r) => visible(r)).map((r) => ({ ...summary(r), itemCount: r.items.length })).reverse() }, { headers: stamp() }),
+      HttpResponse.json({ serverTime: new Date(opts.serverNow()).toISOString(), rounds: [...rounds.values()].filter((r) => visible(r)).map((r) => ({ ...summary(r), itemCount: r.items.length, sourceRoundId: null, leftoverRoundId: null })).reverse() }, { headers: stamp() }),
     ),
     http.get("*/api/v1/auctions/rounds/:id", ({ request, params }) => {
       const r = visible(rounds.get(Number(params.id)));
@@ -445,7 +445,7 @@ export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () 
 }
 
 type FAMember = { id: string; ign: string; nickname: string | null; jobId: number; discordId: string; isActive: boolean; isAdmin: boolean; isIncomplete: boolean };
-type FARound = { id: number; type: "LIVE_CLAIM" | "QUEUE_RANKED"; name: string; status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED"; durationSec: number; winCap: number | null; startDelaySec: number; items: { id: number; name: string; category: string; rarity: string | null; imageUrl: string | null }[]; leftoverRoundId?: number };
+type FARound = { id: number; type: "LIVE_CLAIM" | "QUEUE_RANKED"; name: string; status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED"; durationSec: number; winCap: number | null; startDelaySec: number; items: { id: number; name: string; category: string | null; rarity: string | null; imageUrl: string | null; disabled?: boolean; claimed?: boolean }[]; leftoverRoundId?: number; sourceRoundId?: number };
 
 /**
  * Stand-in for the admin API (members, jobs, activities, layout, notifications, audit log, round management).
@@ -536,10 +536,10 @@ export function fakeAdmin(opts: { me: Me; rounds?: FARound[]; notifications?: { 
       return HttpResponse.json({ items: page, nextCursor: rows.length > 2 ? page.at(-1)!.id : null });
     })),
     // round management
-    http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [...rounds].reverse().map((r) => ({ ...wireRound(r), itemCount: r.items.length })) })),
+    http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [...rounds].reverse().map((r) => ({ ...wireRound(r), itemCount: r.items.length, sourceRoundId: r.sourceRoundId ?? null, leftoverRoundId: r.leftoverRoundId ?? null })) })),
     http.get("*/api/v1/auctions/rounds/:id", ({ params }) => {
       const r = rounds.find((x) => x.id === Number(params.id))!;
-      return HttpResponse.json({ ...wireRound(r), serverTime: new Date().toISOString(), items: r.items.map((i) => ({ ...i, winner: null })), myWinCount: 0, eligibleCategories: [] });
+      return HttpResponse.json({ ...wireRound(r), serverTime: new Date().toISOString(), items: r.items.map(({ claimed, ...i }) => ({ disabled: false, ...i, winner: claimed ? { memberId: "m-bo", wonAt: "2026-09-21T10:00:00Z", queuePos: null } : null })), myWinCount: 0, eligibleCategories: [] });
     }),
     http.get("*/api/v1/auctions/rounds/:id/results", ({ params }) => {
       const r = rounds.find((x) => x.id === Number(params.id))!;
@@ -574,6 +574,17 @@ export function fakeAdmin(opts: { me: Me; rounds?: FARound[]; notifications?: { 
       const r = rounds.find((x) => x.id === Number(params.id))!;
       r.status = "CANCELLED";
       return HttpResponse.json(wireRound(r));
+    })),
+    http.post("*/api/v1/admin/auctions/rounds/:id/leftover", admin(({ params }) => {
+      const src = rounds.find((x) => x.id === Number(params.id))!;
+      if (src.type !== "LIVE_CLAIM") return err("LEFTOVER_LIVE_CLAIM_ONLY", 409);
+      if (src.sourceRoundId) return err("LEFTOVER_NOT_REPEATABLE", 409, { sourceRoundId: src.sourceRoundId });
+      const existing = rounds.find((x) => x.id === src.leftoverRoundId);
+      if (existing) return HttpResponse.json(wireRound(existing));
+      const draft: FARound = { ...src, id: nextRoundId++, name: `${src.name} (leftovers)`, status: "DRAFT", sourceRoundId: src.id, leftoverRoundId: undefined, items: src.items.map((i) => ({ ...i, disabled: i.disabled || !!i.claimed })) };
+      src.leftoverRoundId = draft.id;
+      rounds.push(draft);
+      return HttpResponse.json(wireRound(draft), { status: 201 });
     })),
     http.get("*/api/v1/admin/auctions/rounds/:id/preferences", admin(() => HttpResponse.json({ roundId: 1, lists: [{ memberId: "m-bo", itemIds: [2, 1] }] }))),
   );

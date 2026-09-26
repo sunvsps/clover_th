@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Shield } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Activity, Bell, Gavel, LayoutGrid, MessageSquareWarning, Palette, ScrollText, Settings, UserCog } from "lucide-react";
 import type { WireActivity } from "../api";
 import ActivitiesAdmin from "../components/admin/ActivitiesAdmin";
 import AuctionAdmin from "../components/admin/AuctionAdmin";
@@ -23,7 +23,7 @@ type Props = {
   notify: (message: string) => void;
 };
 
-type Tab = "auctions" | "members" | "activities" | "layout" | "jobs" | "notifications" | "complaints" | "audit";
+type Tab = "auctions" | "members" | "jobs" | "activities" | "layout" | "complaints" | "notifications" | "audit";
 
 /**
  * The admin page (only rendered for admins; the server still enforces every call). It has no control to grant admin
@@ -32,36 +32,44 @@ type Tab = "auctions" | "members" | "activities" | "layout" | "jobs" | "notifica
 export default function AdminView({ isThai, jobs, members, activities, onSaveJobs, onMembersChanged, onActivityChanged, notify }: Props) {
   const t = (en: string, th: string) => (isThai ? th : en);
   const [tab, setTab] = useState<Tab>("auctions");
-  const tabs: [Tab, string][] = [
-    ["auctions", t("Auctions", "ประมูล")],
-    ["members", t("Members", "สมาชิก")],
-    ["activities", t("Activities", "กิจกรรม")],
-    ["layout", t("Team layout", "โครงสร้างทีม")],
-    ["jobs", t("Jobs", "อาชีพ")],
-    ["notifications", t("Notifications", "การแจ้งเตือน")],
-    ["complaints", t("Complaints", "ร้องเรียน")],
-    ["audit", t("Audit log", "บันทึกการทำงาน")],
+  const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
+    { id: "auctions", label: t("Auctions", "ประมูล"), icon: <Gavel size={14} /> },
+    { id: "members", label: t("Members", "สมาชิก"), icon: <UserCog size={14} /> },
+    { id: "jobs", label: t("Jobs", "อาชีพ"), icon: <Palette size={14} /> },
+    { id: "activities", label: t("Activities", "กิจกรรม"), icon: <Activity size={14} /> },
+    { id: "layout", label: t("Team layout", "ผังทีม"), icon: <LayoutGrid size={14} /> },
+    { id: "complaints", label: t("Complaints", "ร้องเรียน"), icon: <MessageSquareWarning size={14} /> },
+    { id: "notifications", label: t("Notifications", "การแจ้งเตือน"), icon: <Bell size={14} /> },
+    { id: "audit", label: t("Audit log", "ประวัติระบบ"), icon: <ScrollText size={14} /> },
   ];
   return (
     <section className="feature-page admin-page" data-testid="admin-page">
       <div className="feature-heading">
         <div>
-          <p className="eyebrow"><Shield size={13} /> ADMIN</p>
-          <h2>{t("Admin", "แอดมิน")}</h2>
+          <p className="eyebrow"><Settings size={13} /> ADMIN MENU / CONFIG</p>
+          <h2>{t("Admin config", "ตั้งค่าแอดมิน")}</h2>
+          <p>
+            {t(
+              "Members come from the Discord bot only (no add or admin-grant here). Run auctions, edit names and jobs, deactivate, and configure activities and layouts here.",
+              "สมาชิกมาจากบอท Discord เท่านั้น (เพิ่ม/ให้สิทธิ์แอดมินไม่ได้จากหน้านี้) จัดรอบประมูล แก้ชื่อ อาชีพ ปิดใช้งาน ตั้งค่ากิจกรรม และผังทีมได้ที่นี่",
+            )}
+          </p>
         </div>
       </div>
-      <div className="auction-tabs admin-tabs" role="tablist">
-        {tabs.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
+      <div className="admin-tabs" role="tablist">
+        {tabs.map((entry) => (
+          <button key={entry.id} type="button" role="tab" aria-selected={tab === entry.id} className={tab === entry.id ? "active" : ""} onClick={() => setTab(entry.id)}>
+            {entry.icon} {entry.label}
+          </button>
         ))}
       </div>
       {tab === "auctions" && <AuctionAdmin isThai={isThai} members={members} notify={notify} />}
       {tab === "members" && <MembersAdmin isThai={isThai} jobs={jobs} onChanged={onMembersChanged} notify={notify} />}
+      {tab === "jobs" && <JobsAdmin key={jobs.map((j) => `${j.id}:${j.label}:${j.color}`).join("|")} isThai={isThai} jobs={jobs} members={members} onSaveJobs={onSaveJobs} />}
       {tab === "activities" && <ActivitiesAdmin isThai={isThai} activities={activities} onChanged={onActivityChanged} notify={notify} />}
       {tab === "layout" && <LayoutAdmin isThai={isThai} activities={activities} onChanged={() => {}} notify={notify} />}
-      {tab === "jobs" && <JobsAdmin isThai={isThai} jobs={jobs} members={members} onSaveJobs={onSaveJobs} />}
-      {tab === "notifications" && <NotificationsAdmin isThai={isThai} notify={notify} />}
       {tab === "complaints" && <ComplaintsAdmin isThai={isThai} />}
+      {tab === "notifications" && <NotificationsAdmin isThai={isThai} notify={notify} />}
       {tab === "audit" && <AuditAdmin isThai={isThai} members={members} />}
     </section>
   );

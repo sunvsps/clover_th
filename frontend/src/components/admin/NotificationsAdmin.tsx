@@ -51,36 +51,59 @@ export default function NotificationsAdmin({ isThai, notify }: Props) {
   return (
     <div className="admin-section" data-admin="notifications">
       <div className="admin-toolbar">
-        <h3>{t("Notifications", "การแจ้งเตือน")}</h3>
         <select value={status} onChange={(e) => { setStatus(e.target.value as NotificationStatus | ""); setExtra([]); setCursor(undefined); }} aria-label={t("Status", "สถานะ")}>
           <option value="">{t("All statuses", "ทุกสถานะ")}</option>
           {STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </select>
-        {page && <span className="plan-count">{STATUSES.map((s) => `${statusLabel(s)} ${page.counts[s]}`).join(" · ")}</span>}
+        {page && (
+          <div className="summary-meta">
+            {STATUSES.map((s) => <span key={s}>{`${statusLabel(s)} ${page.counts[s]}`}</span>)}
+          </div>
+        )}
       </div>
       {(error || polled.error) && <p className="form-error" role="alert">{error ?? polled.error?.userMessage(isThai)}</p>}
-      <ul className="admin-list">
-        {rows.map((n) => (
-          <li key={n.id} data-notification={n.id} data-status={n.status}>
-            <div className="admin-row-main">
-              <strong>#{n.id} {n.eventType}</strong>
-              <small>
-                {statusLabel(n.status)} · {n.target === "dm" ? t("DM", "ข้อความส่วนตัว") : t("Channel", "ช่อง")} · {n.attempts}/{n.maxAttempts} · {bangkokStamp(n.createdAt)}
-                {n.lastError && <span className="badge warn"> · {n.lastErrorCode ? `${n.lastErrorCode}: ` : ""}{n.lastError}</span>}
-              </small>
-            </div>
-            {n.status === "dead" && (
-              <div className="admin-row-actions">
-                <button type="button" className="admin-button" disabled={busy === n.id} onClick={() => void retry(n)} aria-label={t(`Retry notification ${n.id}`, `ส่งการแจ้งเตือน ${n.id} ใหม่`)}>
-                  <RotateCw size={12} /> {t("Retry", "ส่งใหม่")}
-                </button>
-              </div>
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{t("Event", "เหตุการณ์")}</th>
+              <th>{t("Target", "ปลายทาง")}</th>
+              <th>{t("Status", "สถานะ")}</th>
+              <th>{t("Attempts", "ครั้ง")}</th>
+              <th>{t("Error", "ข้อผิดพลาด")}</th>
+              <th>{t("Created", "สร้างเมื่อ")}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((n) => (
+              <tr key={n.id} data-notification={n.id} data-status={n.status}>
+                <td className="mono">#{n.id}</td>
+                <td>{n.eventType}</td>
+                <td>{n.target === "dm" ? t("DM", "ข้อความส่วนตัว") : t("Channel", "ช่อง")}</td>
+                <td><em className={`tag status-${n.status}`}>{statusLabel(n.status)}</em></td>
+                <td className="mono">{n.attempts}/{n.maxAttempts}</td>
+                <td className="mono small" title={n.lastError ?? undefined}>{n.lastError ? `${n.lastErrorCode ? `${n.lastErrorCode}: ` : ""}${n.lastError}` : ""}</td>
+                <td className="mono">{bangkokStamp(n.createdAt)}</td>
+                <td className="row-actions">
+                  {n.status === "dead" && (
+                    <button type="button" className="copy-button" disabled={busy === n.id} onClick={() => void retry(n)} aria-label={t(`Retry notification ${n.id}`, `ส่งการแจ้งเตือน ${n.id} ใหม่`)}>
+                      <RotateCw size={11} /> {t("Retry", "ส่งใหม่")}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {page && rows.length === 0 && (
+              <tr>
+                <td colSpan={8} className="empty-search">{t("No notifications.", "ไม่มีการแจ้งเตือน")}</td>
+              </tr>
             )}
-          </li>
-        ))}
-      </ul>
-      {page && rows.length === 0 && <p className="empty-search">{t("No notifications.", "ไม่มีการแจ้งเตือน")}</p>}
-      {next !== null && <button type="button" className="copy-button" onClick={() => void more()}>{t("Load more", "โหลดเพิ่ม")}</button>}
+          </tbody>
+        </table>
+      </div>
+      {next !== null && <button type="button" className="copy-button load-more" onClick={() => void more()}>{t("Load more", "โหลดเพิ่ม")}</button>}
     </div>
   );
 }

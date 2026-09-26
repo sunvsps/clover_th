@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Copy, ListOrdered, Lock, LockOpen, Package, Trash2, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Copy, Gavel, ListOrdered, Lock, LockOpen, Package, Trash2, Users, Zap } from "lucide-react";
 import {
   claimItem as apiClaimItem,
   getMyPreferences,
@@ -43,29 +43,9 @@ const toLocalItem = (item: AuctionItem, claimedByIgn: string | undefined): Item 
 /** The open round first (either type), then the most recent closed one, then whatever is listed first. */
 const defaultRound = (rounds: RoundListEntry[]) => rounds.find((r) => r.status === "open") ?? rounds.find((r) => r.status === "closed") ?? rounds[0] ?? null;
 
-type Reservation = {
-  member: string;
-  items: string[];
-};
-
 const PAGES_PER_GROUP = 25;
 const ITEMS_PER_PAGE = 4;
-
-/** The reservation "paper trail" (who reserved what, and who has received it) still lives in this browser
- * (localStorage) — the server tracks winners itself, but not a separate "received" checklist. */
-const STORE_KEY = "clover.pageAuction.v4";
-type Persisted = {
-  reservations: Reservation[];
-  reservationRounds: Record<string, number>;
-  receivedItems: string[];
-};
-function loadPersisted(): Partial<Persisted> {
-  try {
-    return JSON.parse(localStorage.getItem(STORE_KEY) ?? "{}") as Partial<Persisted>;
-  } catch {
-    return {};
-  }
-}
+const MAX_ROUND_CHIPS = 10;
 
 type Props = {
   isThai: boolean;
@@ -86,7 +66,6 @@ type Props = {
  */
 export default function PageAuctionView({ isThai, memberId, members: guildMembers, notify, onGoToQueue }: Props) {
   const t = (en: string, th: string) => (isThai ? th : en);
-  const saved = useMemo(() => loadPersisted(), []);
   const myIgn = guildMembers.find((member) => member.id === memberId)?.ign ?? "";
   const myName = myIgn;
   const ignOf = (id: string) => guildMembers.find((member) => member.id === id)?.ign ?? id;
@@ -96,6 +75,32 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
   const rounds = roundList.data ?? [];
   const [picked, setPicked] = useState<number | null>(null);
   const roundId = picked ?? defaultRound(rounds)?.id ?? null;
+  // The picker shows at most MAX_ROUND_CHIPS rounds: open ones and the one being viewed always, then the newest
+  // (the list comes newest first); older rounds are not offered.
+  const shownRounds = useMemo(() => {
+    const rounds = roundList.data ?? [];
+    const keep = rounds.filter((r) => r.status === "open" || r.id === roundId);
+    const rest = rounds.filter((r) => !keep.includes(r)).slice(0, Math.max(0, MAX_ROUND_CHIPS - keep.length));
+    return [...keep, ...rest].sort((a, b) => b.id - a.id);
+  }, [roundList.data, roundId]);
+  const chipsRef = useRef<HTMLDivElement | null>(null);
+  const [chipEdges, setChipEdges] = useState({ start: true, end: true });
+  const measureChips = useCallback(() => {
+    const el = chipsRef.current;
+    if (!el) return;
+    const next = { start: el.scrollLeft <= 2, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 };
+    setChipEdges((cur) => (cur.start === next.start && cur.end === next.end ? cur : next));
+  }, []);
+  useEffect(() => {
+    const el = chipsRef.current;
+    if (!el) return;
+    measureChips();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureChips);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureChips, shownRounds.length]);
+  const scrollChips = (dir: 1 | -1) => chipsRef.current?.scrollBy({ left: dir * chipsRef.current.clientWidth * 0.8, behavior: "smooth" });
   const { round, refresh: refreshRound, apply: applyRound, error: roundError } = useRound(roundId, true);
   const isQueue = round?.type === "queueRanked";
   const eligible = new Set(round?.eligibleCategories ?? []);
@@ -139,9 +144,6 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
   const [currentPage, setCurrentPage] = useState(1); // page *group* (25 pages each)
   const [itemList, setItemList] = useState<Item[]>([]);
   const [busyItems, setBusyItems] = useState<Set<number>>(() => new Set());
-  const [reservations, setReservations] = useState<Reservation[]>(saved.reservations ?? []);
-  const [reservationRounds, setReservationRounds] = useState<Record<string, number>>(saved.reservationRounds ?? {});
-  const [receivedItems, setReceivedItems] = useState<Set<string>>(() => new Set(saved.receivedItems ?? []));
 
   // Keeps itemList in sync with the real round on every poll.
   useEffect(() => {
@@ -150,15 +152,6 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
     setItemList(round.items.map((item) => toLocalItem(item, item.winner ? ignOf(item.winner.memberId) : undefined)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [round]);
-
-  useEffect(() => {
-    const snapshot: Persisted = { reservations, reservationRounds, receivedItems: [...receivedItems] };
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(snapshot));
-    } catch {
-      /* ignore */
-    }
-  }, [reservations, reservationRounds, receivedItems]);
 
   const totalPages = Math.max(1, Math.ceil(itemList.length / ITEMS_PER_PAGE));
   const groupCount = Math.max(1, Math.ceil(totalPages / PAGES_PER_GROUP));
@@ -179,6 +172,16 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
     return `Page ${Math.ceil((index + 1) / ITEMS_PER_PAGE)} / Item ${(index % ITEMS_PER_PAGE) + 1}`;
   };
   const claimedCount = itemList.filter((item) => item.status === "claimed").length;
+  /** Who holds what in the round on screen, from the server's winners, in slot order (first holder first). */
+  const reservations = useMemo(() => {
+    const byMember = new Map<string, string[]>();
+    itemList.forEach((item, index) => {
+      if (item.status !== "claimed" || !item.claimedBy) return;
+      const label = `Page ${Math.floor(index / ITEMS_PER_PAGE) + 1} / Item ${(index % ITEMS_PER_PAGE) + 1}`;
+      byMember.set(item.claimedBy, [...(byMember.get(item.claimedBy) ?? []), label]);
+    });
+    return [...byMember].map(([member, items]) => ({ member, items }));
+  }, [itemList]);
   const copy = {
     liveBoard: isThai ? "กระดานจองไอเท็มแบบเรียลไทม์" : "LIVE RESERVATION BOARD",
     dropList: isThai ? "รายการไอเท็ม" : "THE DROP LIST",
@@ -190,10 +193,6 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
     previous: isThai ? "ก่อนหน้า" : "Previous",
     summary: isThai ? "สรุปการจอง" : "Reservation summary",
     copyList: isThai ? "คัดลอกรายการ" : "Copy list",
-    receivedAll: isThai ? "รับของทั้งหมด" : "Received all",
-    undoAll: isThai ? "ยกเลิกรับทั้งหมด" : "Undo all",
-    received: isThai ? "รับของแล้ว" : "Received",
-    undo: isThai ? "ยกเลิก" : "Undo",
   };
 
   /**
@@ -220,8 +219,8 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
       setMyList(stored);
       setNotice(
         inList
-          ? t(`${item.name} removed from your list.`, `นำ ${item.name} ออกจากรายการแล้ว`)
-          : t(`${item.name} added to your list (#${stored.indexOf(item.id) + 1}).`, `เพิ่ม ${item.name} ในรายการแล้ว (อันดับ ${stored.indexOf(item.id) + 1})`),
+          ? t(`${itemLabel(item.id)} removed from your list.`, `นำ ${itemLabel(item.id)} ออกจากรายการแล้ว`)
+          : t(`${itemLabel(item.id)} added to your list (#${stored.indexOf(item.id) + 1}).`, `เพิ่ม ${itemLabel(item.id)} ในรายการแล้ว (อันดับ ${stored.indexOf(item.id) + 1})`),
       );
     } catch (err) {
       setNotice(auctionErrorText(err, isThai, ignOf));
@@ -244,25 +243,7 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
     try {
       const result = mine ? await apiReleaseItem(round.id, itemId) : await apiClaimItem(round.id, itemId);
       applyRound(result.item, result.myWinCount);
-      if (mine) {
-        setReservations((current) =>
-          current.map((reservation) => (reservation.member === myName ? { ...reservation, items: reservation.items.filter((item) => item !== label) } : reservation)).filter((reservation) => reservation.items.length > 0),
-        );
-        setReservationRounds((rounds) => {
-          const next = { ...rounds };
-          delete next[`${myName}:${label}`];
-          return next;
-        });
-        setNotice(`${label} reservation removed.`);
-      } else {
-        setReservations((current) => {
-          const existing = current.find((reservation) => reservation.member === myName);
-          if (existing) return current.map((reservation) => (reservation.member === myName ? { ...reservation, items: [...reservation.items, label] } : reservation));
-          return [...current, { member: myName, items: [label] }];
-        });
-        setReservationRounds((rounds) => ({ ...rounds, [`${myName}:${label}`]: round.id }));
-        setNotice(`${label} is reserved for ${myName}.`);
-      }
+      setNotice(mine ? t(`${label} reservation removed.`, `ยกเลิกการจอง ${label} แล้ว`) : t(`${label} is reserved for ${myName}.`, `จอง ${label} ให้ ${myName} แล้ว`));
     } catch (err) {
       setNotice(auctionErrorText(err, isThai, ignOf));
     } finally {
@@ -276,73 +257,19 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
   }
 
   function copySummary() {
+    if (!round) return;
     const auctionDate = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date());
-    const rounds = [...new Set(reservations.flatMap((reservation) => reservation.items.map((item) => reservationRounds[`${reservation.member}:${item}`] ?? 0)))].sort((a, b) => a - b);
-    const summary = rounds
-      .flatMap((roundId) => {
-        const roundReservations = reservations
-          .map((reservation) => ({
-            ...reservation,
-            items: reservation.items
-              .filter((item) => (reservationRounds[`${reservation.member}:${item}`] ?? 0) === roundId)
-              .sort((firstItem, secondItem) => {
-                const firstMatch = firstItem.match(/Page (\d+) \/ Item (\d+)/);
-                const secondMatch = secondItem.match(/Page (\d+) \/ Item (\d+)/);
-                if (!firstMatch || !secondMatch) return 0;
-                return Number(firstMatch[1]) - Number(secondMatch[1]) || Number(firstMatch[2]) - Number(secondMatch[2]);
-              }),
-          }))
-          .filter((reservation) => reservation.items.length > 0);
-        const roundItemCount = roundReservations.reduce((total, reservation) => total + reservation.items.length, 0);
-        return [
-          `Clover_TH Auction - Round #${roundId}`,
-          `Auction date: ${auctionDate}`,
-          `${roundReservations.length} members · ${roundItemCount} items reserved`,
-          "",
-          ...roundReservations.flatMap((reservation, index) => [`${index + 1}. ${reservation.member}`, ...reservation.items.map((item) => `   • ${item.replace(" / ", " — ")}`), ""]),
-        ];
-      })
+    const summary = [
+      `Clover_TH Auction - Round #${round.id} ${round.name}`,
+      `Auction date: ${auctionDate}`,
+      `${reservations.length} members · ${claimedCount} items reserved`,
+      "",
+      ...reservations.flatMap((reservation, index) => [`${index + 1}. ${reservation.member}`, ...reservation.items.map((item) => `   • ${item.replace(" / ", " — ")}`), ""]),
+    ]
       .join("\n")
       .trim();
     navigator.clipboard?.writeText(summary);
-    setNotice("Readable reservation summary copied to clipboard.");
-  }
-
-  function markItemReceived(member: string, item: string) {
-    if (member !== myName) return;
-    const key = `${member}:${item}`;
-    setReceivedItems((currentItems) => new Set(currentItems).add(key));
-    setNotice(`${item} marked as received.`);
-  }
-
-  function markAllReceived(member: string, itemsToReceive: string[]) {
-    if (member !== myName) return;
-    setReceivedItems((currentItems) => {
-      const nextItems = new Set(currentItems);
-      itemsToReceive.forEach((item) => nextItems.add(`${member}:${item}`));
-      return nextItems;
-    });
-    setNotice("All reserved items marked as received.");
-  }
-
-  function undoAllReceived(member: string, itemsToReceive: string[]) {
-    if (member !== myName) return;
-    setReceivedItems((currentItems) => {
-      const nextItems = new Set(currentItems);
-      itemsToReceive.forEach((item) => nextItems.delete(`${member}:${item}`));
-      return nextItems;
-    });
-    setNotice("All received marks removed.");
-  }
-
-  function undoReceived(member: string, item: string) {
-    if (member !== myName) return;
-    setReceivedItems((currentItems) => {
-      const nextItems = new Set(currentItems);
-      nextItems.delete(`${member}:${item}`);
-      return nextItems;
-    });
-    setNotice(`${item} returned to pending.`);
+    setNotice(t("Reservation summary copied to clipboard.", "คัดลอกสรุปการจองแล้ว"));
   }
 
   return (
@@ -384,16 +311,43 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
       </section>
 
       {rounds.length > 1 && (
-        <label className="round-picker">
-          <span>{t("Round", "รอบ")}</span>
-          <select value={roundId ?? ""} onChange={(e) => setPicked(Number(e.target.value))} aria-label={t("Round", "รอบ")}>
-            {rounds.map((r) => (
-              <option key={r.id} value={r.id}>
-                #{r.id} {r.name} · {r.type === "liveClaim" ? t("live claim", "จองสด") : t("ranked queue", "จัดอันดับคิว")} · {phaseText[r.status] ?? r.status}
-              </option>
-            ))}
-          </select>
-        </label>
+        <section className="round-picker" aria-labelledby="round-picker-label">
+          <p className="eyebrow" id="round-picker-label">
+            <Gavel size={12} /> {t("ROUNDS", "รอบประมูล")} <em>{shownRounds.length}</em>
+            {rounds.length > shownRounds.length && <small>{t(`latest ${shownRounds.length} of ${rounds.length}`, `ล่าสุด ${shownRounds.length} จาก ${rounds.length} รอบ`)}</small>}
+          </p>
+          <div className={`round-chips-wrap ${chipEdges.start ? "" : "fade-start"} ${chipEdges.end ? "" : "fade-end"}`}>
+            <button type="button" className="round-chips-nav prev" onClick={() => scrollChips(-1)} disabled={chipEdges.start} aria-label={t("Scroll rounds left", "เลื่อนรอบไปทางซ้าย")}>
+              <ChevronLeft size={16} />
+            </button>
+            <div className="round-chips" role="radiogroup" aria-labelledby="round-picker-label" ref={chipsRef} onScroll={measureChips}>
+              {shownRounds.map((r) => (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={r.id === roundId}
+                  key={r.id}
+                  className={`round-chip status-${r.status} ${r.id === roundId ? "active" : ""}`}
+                  onClick={() => setPicked(r.id)}
+                >
+                  <span className="round-chip-dot" aria-hidden="true" />
+                  <span className="round-chip-main">
+                    <strong>
+                      <em>#{r.id}</em> {r.name}
+                    </strong>
+                    <small>
+                      {r.type === "liveClaim" ? <Zap size={11} /> : <ListOrdered size={11} />} {r.type === "liveClaim" ? t("Live claim", "จองสด") : t("Ranked queue", "จัดอันดับคิว")}
+                    </small>
+                  </span>
+                  <span className={`tag status-${r.status}`}>{phaseText[r.status] ?? r.status}</span>
+                </button>
+              ))}
+            </div>
+            <button type="button" className="round-chips-nav next" onClick={() => scrollChips(1)} disabled={chipEdges.end} aria-label={t("Scroll rounds right", "เลื่อนรอบไปทางขวา")}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </section>
       )}
 
       {roundList.error && (
@@ -464,14 +418,16 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
                   Page <strong>{pageBlock.page}</strong>
                 </div>
                 <div className="item-grid">
-                  {pageBlock.items.map((item) => {
+                  {pageBlock.items.map((item, slot) => {
+                    // numbered 1-4 within the page, same as the admin round form; the stored name is "Item N" for the whole round
+                    const slotName = `Item ${slot + 1}`;
                     const isMine = item.status === "claimed" && item.claimedBy === myName;
                     const busy = busyItems.has(item.id);
                     if (item.disabled) {
                       return (
                         <article className="item-card cat-stripe item-off" key={item.id}>
                           <div className="item-info">
-                            <h3>{item.name}</h3>
+                            <h3>{slotName}</h3>
                             <span className="cat-pill none">{t("Disabled", "ปิดใช้งาน")}</span>
                           </div>
                           <button className="claim-button" type="button" disabled>
@@ -487,7 +443,7 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
                       return (
                         <article className={`item-card ${item.status} ${inList ? "mine" : ""} ${categoryStripe(item.category)}`} key={item.id}>
                           <div className="item-info">
-                            <h3>{item.name}</h3>
+                            <h3>{slotName}</h3>
                             {item.status === "claimed" ? (
                               <small className="reserved-by">
                                 {t("Won by", "ได้ของ")} {item.claimedBy}
@@ -531,7 +487,7 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
                     return (
                       <article className={`item-card ${item.status} ${categoryStripe(item.category)}`} key={item.id}>
                         <div className="item-info">
-                          <h3>{item.name}</h3>
+                          <h3>{slotName}</h3>
                           <CategoryPill category={item.category} isThai={isThai} />
                           {item.status === "claimed" && <small className="reserved-by">Reserved by {item.claimedBy}</small>}
                         </div>
@@ -589,63 +545,37 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
             <p className="eyebrow">THE PAPER TRAIL</p>
             <h2>{copy.summary}</h2>
           </div>
-          <button className="copy-button" type="button" onClick={copySummary}>
+          <button className="copy-button" type="button" onClick={copySummary} disabled={reservations.length === 0}>
             <Copy size={15} /> {copy.copyList}
           </button>
         </div>
         <div className="summary-meta">
           <span>
-            <Users size={15} /> {reservations.length} members
+            <Users size={15} /> {reservations.length} {t("members", "คน")}
           </span>
           <span>
-            <Package size={15} /> {claimedCount} items reserved
+            <Package size={15} /> {claimedCount} {t("items reserved", "ชิ้นที่จองแล้ว")}
           </span>
         </div>
         <div className="summary-grid">
-          {reservations.map((reservation) => {
-            const isOwnReservation = reservation.member === myIgn.trim();
-            const sortedItems = [...reservation.items].sort((firstItem, secondItem) => {
-              const firstMatch = firstItem.match(/Page (\d+) \/ Item (\d+)/);
-              const secondMatch = secondItem.match(/Page (\d+) \/ Item (\d+)/);
-              if (!firstMatch || !secondMatch) return 0;
-              return Number(firstMatch[1]) - Number(secondMatch[1]) || Number(firstMatch[2]) - Number(secondMatch[2]);
-            });
-            const allReceived = sortedItems.every((item) => receivedItems.has(`${reservation.member}:${item}`));
-            return (
-              <article className="summary-card" key={reservation.member}>
-                <div className="member-heading">
-                  <span className="member-avatar">{reservation.member.charAt(0).toUpperCase()}</span>
-                  <strong>{reservation.member}</strong>
-                  <span className="item-count">
-                    {sortedItems.length} {sortedItems.length === 1 ? "item" : "items"}
-                  </span>
-                  {isOwnReservation && (
-                    <button type="button" className="receive-all-button" onClick={() => (allReceived ? undoAllReceived(reservation.member, sortedItems) : markAllReceived(reservation.member, sortedItems))}>
-                      {allReceived ? copy.undoAll : copy.receivedAll}
-                    </button>
-                  )}
+          {reservations.map((reservation) => (
+            <article className={`summary-card ${reservation.member === myName ? "mine" : ""}`} key={reservation.member}>
+              <div className="member-heading">
+                <span className="member-avatar">{reservation.member.charAt(0).toUpperCase()}</span>
+                <strong>{reservation.member}</strong>
+                <span className="item-count">
+                  {reservation.items.length} {reservation.items.length === 1 ? "item" : "items"}
+                </span>
+              </div>
+              {reservation.items.map((item) => (
+                <div className="reserved-item" key={item}>
+                  <span />
+                  {item}
                 </div>
-                {sortedItems.map((item) => {
-                  const isReceived = receivedItems.has(`${reservation.member}:${item}`);
-                  return (
-                    <div className={`reserved-item ${isReceived ? "received" : ""}`} key={item}>
-                      <span />
-                      {item}
-                      {isReceived ? (
-                        <button type="button" className="undo-received-button" onClick={() => undoReceived(reservation.member, item)}>
-                          {copy.undo}
-                        </button>
-                      ) : isOwnReservation ? (
-                        <button type="button" className="receive-button" onClick={() => markItemReceived(reservation.member, item)}>
-                          <Check size={12} /> {copy.received}
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </article>
-            );
-          })}
+              ))}
+            </article>
+          ))}
+          {reservations.length === 0 && <p className="empty-search">{t("Nobody has reserved an item in this round yet.", "รอบนี้ยังไม่มีใครจองไอเท็ม")}</p>}
         </div>
       </section>
     </div>
