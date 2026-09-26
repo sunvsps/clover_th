@@ -13,7 +13,7 @@
 
 ## 1. ภาพรวมและเป้าหมาย
 
-ชื่อกิลด์คือ **Clover_TH** [CONFIRMED] ส่วนชื่อ repository และโฟลเดอร์โปรเจกต์คือ Cover_TH แอปนี้คือแอปบริหารจัดการกิลด์ Clover_TH ในเกม Ragnarok: The New World (เซิร์ฟไทย) ปัจจุบันมี frontend แบบ React/Vite อยู่ในโฟลเดอร์ `frontend/` ซึ่งทำงานด้วย mock state ในหน่วยความจำทั้งหมด โปรเจกต์นี้คือการสร้าง backend (Node.js, PostgreSQL, Prisma) มาแทน mock state ดังกล่าว
+ชื่อกิลด์คือ **Clover_TH** [CONFIRMED] ส่วนชื่อ repository และโฟลเดอร์โปรเจกต์คือ Cover_TH แอปนี้คือแอปบริหารจัดการกิลด์ Clover_TH ในเกม Ragnarok: The New World (เซิร์ฟไทย) ณ ตอนที่เขียนเอกสารนี้ มี frontend แบบ React/Vite อยู่ในโฟลเดอร์ `frontend/` ซึ่งทำงานด้วย mock state ในหน่วยความจำทั้งหมด โปรเจกต์นี้คือการสร้าง backend (Node.js, PostgreSQL, Prisma) มาแทน mock state ดังกล่าว **สถานะ: เสร็จแล้วตั้งแต่ WP11–WP15** — ตอนนี้ frontend ทำงานผ่าน API จริงทั้งหมด (auth, ตารางประจำสัปดาห์, team planner, auction, admin) ไม่มี mock state เหลืออยู่แล้ว
 
 เป้าหมายทางธุรกิจ:
 
@@ -302,7 +302,7 @@ Layout ขนาด และค่า backfill แก้ได้ต่อก�
 - ระบบ page hold จาก UI Auction เดิมของ frontend [DEFAULT]
 - การอัปโหลดไฟล์รูปไอเทม v1 ใช้ URL ที่ admin วางเอง การอัปโหลดไว้เฟสถัดไป [CONFIRMED]
 
-**สิ่งที่ต้องแก้ใน frontend** (สำหรับรายการของ Architect)
+**สิ่งที่ต้องแก้ใน frontend** (สำหรับรายการของ Architect) — **ทำเสร็จทั้งหมดแล้วตั้งแต่ WP11–WP15**
 - แทนที่ mock state ด้วยการเรียก API และใช้ member id เป็น key ทั้งหมด
 - แทนที่ A/B x 8 x 5 ที่ฝังตายตัวด้วย layout ของแต่ละกิจกรรม (Main/Sub ฯลฯ)
 - UI Auction: แทนที่ไอเทมทั่วไป 200 ชิ้นและ page hold ด้วยหมวด, ไอเทมต่อ Round, queue, และการกรอกรายการที่ต้องการเรียงตามอันดับ ระยะเวลาเริ่มต้น 5 นาที
@@ -359,7 +359,7 @@ Members (id, Discord id, ชื่อในเกม, ชื่อเล่น, 
 | D-5 | Type 2: ชนะได้สูงสุด 1 ชิ้นต่อหมวดต่อ Round | ผู้ใช้ | |
 | D-6 | "Guild War" หมายถึง Guild League (ห้อง Main และ Sub) | ผู้ใช้ | |
 | D-7 | Type 1 เป็นการแข่งกดสด 5 นาที แสดงผู้ชนะทันที เพดาน 5 ชิ้นต่อคนต่อ Round | ผู้ใช้ | |
-| D-8 | ล็อกอินด้วย Discord เท่านั้น bot ลงทะเบียนสมาชิกผ่าน endpoint ที่มี auth แยก ผู้ที่ยังไม่ลงทะเบียนล็อกอินไม่ได้ | ผู้ใช้ | การ sign in จำลองของ frontend |
+| D-8 | ล็อกอินด้วย Discord เท่านั้น bot ลงทะเบียนสมาชิกผ่าน endpoint ที่มี auth แยก ผู้ที่ยังไม่ลงทะเบียนล็อกอินไม่ได้ | ผู้ใช้ | ทำเสร็จแล้วด้วย Discord OAuth จริง (WP11) ถอดการ sign in จำลองของ frontend ออก |
 | D-9 | admin เป็นผู้สร้าง Round และไอเทม | ผู้ใช้ | |
 | D-10 | คงสถานะ `leave` ไว้ | ผู้ใช้ | |
 | D-11 | Asia/Bangkok และเริ่มสัปดาห์วันจันทร์ | ผู้ใช้ | เวลาท้องถิ่นของ browser ใน frontend |
