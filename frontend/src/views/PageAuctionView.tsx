@@ -440,20 +440,21 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
                       const rank = queueList.indexOf(item.id);
                       const inList = rank !== -1;
                       const canQueue = item.category !== null && eligible.has(item.category);
+                      // green frame: an item I won; while the round has not closed yet, also the items on my list
+                      const framed = item.status === "claimed" ? item.claimedBy === myName : inList && phase !== "closed" && phase !== "cancelled";
                       return (
-                        <article className={`item-card ${item.status} ${inList ? "mine" : ""} ${categoryStripe(item.category)}`} key={item.id}>
+                        <article className={`item-card ${item.status} ${framed ? "mine" : ""} ${categoryStripe(item.category)}`} key={item.id}>
                           <div className="item-info">
                             <h3>{slotName}</h3>
+                            {/* same layout as a live-claim card: the category tag stays, the holder goes underneath */}
+                            <CategoryPill category={item.category} isThai={isThai} />
                             {item.status === "claimed" ? (
                               <small className="reserved-by">
                                 {t("Won by", "ได้ของ")} {item.claimedBy}
                                 {item.queuePos ? ` · ${t("queue", "คิว")} #${item.queuePos}` : ""}
                               </small>
                             ) : (
-                              <>
-                                <CategoryPill category={item.category} isThai={isThai} />
-                                {inList && <small>{t(`My #${rank + 1}`, `อันดับ ${rank + 1} ของฉัน`)}</small>}
-                              </>
+                              inList && <small className="reserved-by">{t(`My #${rank + 1}`, `อันดับ ${rank + 1} ของฉัน`)}</small>
                             )}
                           </div>
                           <button
@@ -485,11 +486,11 @@ export default function PageAuctionView({ isThai, memberId, members: guildMember
                       );
                     }
                     return (
-                      <article className={`item-card ${item.status} ${categoryStripe(item.category)}`} key={item.id}>
+                      <article className={`item-card ${item.status} ${isMine ? "mine" : ""} ${categoryStripe(item.category)}`} key={item.id}>
                         <div className="item-info">
                           <h3>{slotName}</h3>
                           <CategoryPill category={item.category} isThai={isThai} />
-                          {item.status === "claimed" && <small className="reserved-by">Reserved by {item.claimedBy}</small>}
+                          {item.status === "claimed" && <small className="reserved-by">{t("Reserved by", "จองโดย")} {item.claimedBy}</small>}
                         </div>
                         <button
                           className="claim-button"
