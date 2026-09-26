@@ -220,6 +220,7 @@ npm run build
 | [docs/qa-report-wp1-wp6.md](docs/qa-report-wp1-wp6.md) | รายงาน QA ของ WP1 ถึง WP6 |
 | [docs/security-review.md](docs/security-review.md) | รายงานตรวจความปลอดภัยของ backend |
 | [docs/deploy.md](docs/deploy.md) | ติดตั้งจริง (env, migrate, proxy, backup) |
+| [docs/local-setup.md](docs/local-setup.md) | ตั้งค่าเครื่องใหม่หลัง Docker เปิดขึ้นมา (migrate, seed, login) step by step |
 | [docs/postman.md](docs/postman.md) | ทดสอบ API ด้วย Postman |
 
 ## ถ้าติดปัญหา
