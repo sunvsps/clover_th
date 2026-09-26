@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { type Category, type RoundItemInput, type RoundSummary } from "../../api";
 import CategoryDots from "./CategoryDots";
+import NumberInput from "./NumberInput";
+import { FIELD_DEFAULTS } from "./roundFormModel";
 import { categoryStripe } from "../categoryStyle";
 import type { RoundFormValue } from "./roundFormModel";
 
@@ -33,8 +35,7 @@ type Props = {
  */
 export default function RoundForm({ initial, isNew, isThai, busy, error, onSubmit, onCancel }: Props) {
   const t = (en: string, th: string) => (isThai ? th : en);
-  const [pagesInput, setPagesInput] = useState(() => String(Math.max(MIN_PAGES, isNew ? 1 : Math.ceil(initial.items.length / ITEMS_PER_PAGE))));
-  const pages = pagesInput === "" ? MIN_PAGES : Math.max(MIN_PAGES, Math.min(MAX_PAGES, Number(pagesInput) || MIN_PAGES));
+  const [pages, setPages] = useState(() => Math.max(MIN_PAGES, isNew ? FIELD_DEFAULTS.pages : Math.ceil(initial.items.length / ITEMS_PER_PAGE)));
   const [v, setV] = useState<RoundFormValue>(() => (isNew ? { ...initial, items: resizeItems([], pages) } : initial));
   // Indexes of preview cards the admin unticked (every card starts ticked; a draft being edited keeps its own). A
   // disabled item is still saved in its slot, so the auction board matches this preview, but it can't be claimed or
@@ -58,16 +59,11 @@ export default function RoundForm({ initial, isNew, isThai, busy, error, onSubmi
     problems.push(t("A ranked queue round needs a category on every item.", "รอบจัดอันดับคิวต้องระบุหมวดให้ไอเท็มทุกชิ้น"));
   if (v.type === "liveClaim" && (v.winCap < 1 || v.winCap > 50)) problems.push(t("Items per member must be 1 to 50.", "จำนวนต่อคนต้อง 1 ถึง 50"));
 
-  /** Lets the field go fully blank while typing; a blank field behaves as 1 page (see `pages` above) and is
-   * repainted to "1" on blur so it never submits looking empty. */
-  function handlePagesChange(raw: string) {
-    setPagesInput(raw);
-    const next = raw === "" ? MIN_PAGES : Math.max(MIN_PAGES, Math.min(MAX_PAGES, Number(raw) || MIN_PAGES));
+  /** The field may go blank while typing (it then counts as 1 page, see NumberInput). */
+  function handlePagesChange(next: number) {
+    setPages(next);
     setV((cur) => ({ ...cur, items: resizeItems(cur.items, next) }));
     setOff((cur) => new Set([...cur].filter((i) => i < next * ITEMS_PER_PAGE)));
-  }
-  function handlePagesBlur() {
-    if (pagesInput !== String(pages)) setPagesInput(String(pages));
   }
 
   /** Sets (or, with undefined, clears) one item's category. */
@@ -109,21 +105,21 @@ export default function RoundForm({ initial, isNew, isThai, busy, error, onSubmi
         </label>
         <label>
           <span>{t("Duration (seconds)", "ระยะเวลา (วินาที)")}</span>
-          <input type="number" value={v.durationSec} min={5} max={86400} onChange={(e) => setV({ ...v, durationSec: Number(e.target.value) })} aria-label={t("Duration (seconds)", "ระยะเวลา (วินาที)")} />
+          <NumberInput value={v.durationSec} min={5} max={86400} fallback={FIELD_DEFAULTS.durationSec} onChange={(durationSec) => setV((cur) => ({ ...cur, durationSec }))} aria-label={t("Duration (seconds)", "ระยะเวลา (วินาที)")} />
         </label>
         <label>
           <span>{t("Start delay (seconds)", "หน่วงก่อนเริ่ม (วินาที)")}</span>
-          <input type="number" value={v.startDelaySec} min={0} max={60} onChange={(e) => setV({ ...v, startDelaySec: Number(e.target.value) })} aria-label={t("Start delay (seconds)", "หน่วงก่อนเริ่ม (วินาที)")} />
+          <NumberInput value={v.startDelaySec} min={0} max={60} fallback={FIELD_DEFAULTS.startDelaySec} onChange={(startDelaySec) => setV((cur) => ({ ...cur, startDelaySec }))} aria-label={t("Start delay (seconds)", "หน่วงก่อนเริ่ม (วินาที)")} />
         </label>
         {v.type === "liveClaim" && (
           <label>
             <span>{t("Items per member (cap)", "จำนวนต่อคน (สูงสุด)")}</span>
-            <input type="number" value={v.winCap} min={1} max={50} onChange={(e) => setV({ ...v, winCap: Number(e.target.value) })} aria-label={t("Items per member (cap)", "จำนวนต่อคน (สูงสุด)")} />
+            <NumberInput value={v.winCap} min={1} max={50} fallback={FIELD_DEFAULTS.winCap} onChange={(winCap) => setV((cur) => ({ ...cur, winCap }))} aria-label={t("Items per member (cap)", "จำนวนต่อคน (สูงสุด)")} />
           </label>
         )}
         <label>
           <span>{t("Pages", "จำนวนหน้า")}</span>
-          <input type="number" value={pagesInput} min={MIN_PAGES} max={MAX_PAGES} onChange={(e) => handlePagesChange(e.target.value)} onBlur={handlePagesBlur} aria-label={t("Pages", "จำนวนหน้า")} />
+          <NumberInput value={pages} min={MIN_PAGES} max={MAX_PAGES} fallback={FIELD_DEFAULTS.pages} onChange={handlePagesChange} aria-label={t("Pages", "จำนวนหน้า")} />
         </label>
       </div>
 

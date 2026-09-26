@@ -15,6 +15,7 @@ import {
   type RoundListEntry,
 } from "../../api";
 import type { GuildMember } from "../../data/guild";
+import NumberInput from "./NumberInput";
 import RoundForm from "./RoundForm";
 import { emptyRound, type RoundFormValue } from "./roundFormModel";
 import { adminErrorText } from "./adminShared";
@@ -179,8 +180,8 @@ export default function AuctionAdmin({ isThai, members, notify }: Props) {
                 <td className="row-actions">
                   {starting?.id === r.id ? (
                     <div className="start-panel">
-                      <label><span>{t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")}</span><input className="small-input tiny" type="number" value={starting.delay} min={0} max={60} onChange={(e) => setStarting({ ...starting, delay: Number(e.target.value) })} aria-label={t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")} /></label>
-                      <label><span>{t("Duration (s)", "ระยะเวลา (วินาที)")}</span><input className="small-input" type="number" value={starting.duration} min={5} max={86400} onChange={(e) => setStarting({ ...starting, duration: Number(e.target.value) })} aria-label={t("Duration (s)", "ระยะเวลา (วินาที)")} /></label>
+                      <label><span>{t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")}</span><NumberInput className="small-input tiny" value={starting.delay} min={0} max={60} fallback={r.startDelaySec} onChange={(delay) => setStarting((cur) => cur && { ...cur, delay })} aria-label={t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")} /></label>
+                      <label><span>{t("Duration (s)", "ระยะเวลา (วินาที)")}</span><NumberInput className="small-input" value={starting.duration} min={5} max={86400} fallback={r.durationSec} onChange={(duration) => setStarting((cur) => cur && { ...cur, duration })} aria-label={t("Duration (s)", "ระยะเวลา (วินาที)")} /></label>
                       <button type="button" className="admin-button" disabled={busy} onClick={() => void run(async () => { await startRound(r.id, { startDelaySec: starting.delay, durationSec: starting.duration }); setStarting(null); }, t("Round started.", "เริ่มรอบแล้ว"), (err) => startErrorText(err, r))}><Play size={12} /> {t("Start round", "เริ่มรอบ")}</button>
                       <button type="button" className="copy-button" onClick={() => setStarting(null)}>{t("Cancel", "ยกเลิก")}</button>
                     </div>
