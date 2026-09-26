@@ -54,7 +54,7 @@ export async function memberClaimLock(
 }
 
 /**
- * Queue join/leave, round start (cutoffs), finalize and requeue serialize per category, so QueueEntry id order
+ * Queue join/leave, round start (cutoffs), finalize and dequeue serialize per category, so QueueEntry id order
  * equals commit order. Several categories are always taken in sorted order (deadlock-free).
  */
 export async function categoryLocks(tx: Tx, categories: readonly string[]): Promise<void> {

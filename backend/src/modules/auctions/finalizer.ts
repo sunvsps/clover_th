@@ -26,8 +26,9 @@ export async function loadPreferences(db: Pick<Tx, '$queryRaw'>, roundId: number
  *
  * Idempotent: a round with allocatedAt set is left alone (returns false).
  * Steps: snapshot the queue of each category (entries with id <= cutoff that still exist, so members who left
- * during the window are out), persist the snapshot as the frozen input, allocate (pure), write winners, re-queue
- * ALL winners at the tail per category in their previous queue order, stamp allocatedAt/algorithmVersion, audit.
+ * during the window are out), persist the snapshot as the frozen input, allocate (pure), write winners, take every
+ * winner OUT of the queue of the category they won (they join again if they want another), stamp
+ * allocatedAt/algorithmVersion, audit.
  * Items nobody was allocated simply stay without a winner: a queue round makes no leftover round.
  */
 export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string): Promise<boolean> {
@@ -65,16 +66,15 @@ export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string)
       WHERE id = ${a.itemId} AND "roundId" = ${round.id} AND "winnerId" IS NULL`;
   }
 
-  // Re-queue: every winner gets a fresh tail entry per category, ordered by their previous queue position.
-  // Non-winners keep their ids (relative order, in front); latecomers (ids above the cutoff) stay ahead of winners.
-  const requeued: Record<string, string[]> = {};
+  // Dequeue: every winner leaves the queue of the category they won. Everyone else keeps their entry (and order);
+  // the winner's other queues are untouched.
+  const dequeued: Record<string, string[]> = {};
   for (const category of [...categories].sort()) {
     const winners = awards.filter((a) => a.category === category).sort((x, y) => x.position - y.position);
     for (const a of winners) {
       await tx.$executeRaw`DELETE FROM "QueueEntry" WHERE category = ${category}::"ItemCategory" AND "memberId" = ${a.memberId}::uuid`;
-      await tx.$executeRaw`INSERT INTO "QueueEntry" (category, "memberId") VALUES (${category}::"ItemCategory", ${a.memberId}::uuid)`;
     }
-    requeued[category] = winners.map((w) => w.memberId);
+    dequeued[category] = winners.map((w) => w.memberId);
   }
 
   // Items that ended unallocated stay in this round without a winner (no leftover round is made).
@@ -104,6 +104,6 @@ export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string)
     })),
     unallocatedItems: unallocated.map((l) => l.id),
   });
-  await audit('auction.requeue', { requeued });
+  await audit('auction.dequeue', { dequeued });
   return true;
 }

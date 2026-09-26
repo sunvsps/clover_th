@@ -31,7 +31,7 @@ describe('WP9 concurrency (Promise.all against real Postgres)', () => {
     let acceptedTotal = 0;
     let rejectedTotal = 0;
     for (let round = 0; round < 8; round++) {
-      // fresh queue each round: everyone re-joins in the same order (winners were re-queued last time)
+      // fresh queue each round: everyone re-joins in the same order (winners were taken out last time)
       await w.db.prisma.queueEntry.deleteMany();
       await joinInOrder(w, ms, 'GEAR');
       const r = await openQueueRound(w, admin, gear(16));
@@ -101,7 +101,10 @@ describe('WP9 concurrency (Promise.all against real Postgres)', () => {
     expect(await w.db.prisma.auditLog.count({ where: { action: 'auction.allocation' } })).toBe(1);
     expect(await w.db.prisma.roundQueueSnapshot.count({ where: { roundId: r.id } })).toBe(6);
     expect(await w.db.prisma.auctionRound.count({ where: { sourceRoundId: r.id } })).toBeLessThanOrEqual(1);
-    expect(new Set(await queueOrder(w, 'GEAR')).size).toBe(6); // nobody duplicated or lost in the queue
+    const left = await queueOrder(w, 'GEAR');
+    const winners = (await w.db.prisma.auctionItem.findMany({ where: { roundId: r.id, winnerId: { not: null } } })).map((i) => i.winnerId);
+    expect(new Set(left).size).toBe(left.length); // nobody duplicated
+    expect(left.sort()).toEqual(ms.map((m) => m.id).filter((id) => !winners.includes(id)).sort()); // exactly the winners left
     expect((await replayAllocation(w.db.prisma, r.id)).matches).toBe(true);
   });
 
@@ -121,7 +124,7 @@ describe('WP9 concurrency (Promise.all against real Postgres)', () => {
     expect(rows.map((x) => x.rank)).toEqual(rows.map((_, i) => i + 1)); // dense, one list
   });
 
-  it('join/leave racing the round start and the allocation keep the queue consistent (no duplicates, winners keep their relative order)', async () => {
+  it('join/leave racing the round start and the allocation keep the queue consistent (no duplicates, winners taken out)', async () => {
     const admin = await session(w, { admin: true });
     const base = await sessions(w, 6);
     const extra = await sessions(w, 10, 'Extra');
@@ -137,12 +140,9 @@ describe('WP9 concurrency (Promise.all against real Postgres)', () => {
     const order = await queueOrder(w, 'GEAR');
     expect(new Set(order).size).toBe(order.length);
     const winners = base.slice(0, 3).map((m) => m.id);
-    const idx = winners.map((id) => order.indexOf(id));
-    expect(idx.every((i) => i >= 0)).toBe(true);
-    expect([...idx].sort((x, y) => x - y)).toEqual(idx); // A, B, C keep their previous relative order at the tail
-    // non-winners that did not leave are still ahead of every winner
-    for (const m of base.slice(3))
-      if (order.includes(m.id)) expect(order.indexOf(m.id)).toBeLessThan(Math.min(...idx));
+    expect(winners.some((id) => order.includes(id))).toBe(false); // A, B, C won GEAR and left that queue
+    // every extra that joined is still there, once
+    for (const m of extra) expect(order.filter((id) => id === m.id)).toHaveLength(1);
     expect((await replayAllocation(w.db.prisma, r.id)).matches).toBe(true);
     const ids = (
       await w.db.prisma.queueEntry.findMany({ where: { category: 'GEAR' }, orderBy: { id: 'asc' } })

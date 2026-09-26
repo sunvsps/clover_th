@@ -27,7 +27,7 @@ export async function deactivateMember(
 ): Promise<boolean> {
   await lockActivities(tx);
   // Lock order: activities, then the category queues (sorted), so deleting queue entries cannot interleave with a
-  // round's allocation snapshot / re-queue or a join (review M-3): no inactive member is ever left in a queue.
+  // round's allocation snapshot / dequeue or a join (review M-3): no inactive member is ever left in a queue.
   await categoryLocks(tx, QUEUE_CATEGORIES);
   const rows = await tx.$queryRaw<{ id: string }[]>`
     UPDATE "Member" SET "isActive" = false, "deactivatedAt" = clock_timestamp(), "updatedAt" = clock_timestamp()

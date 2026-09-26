@@ -103,7 +103,7 @@ describe('golden test end to end (FR-3.7 to FR-3.13)', () => {
   const A = api(w);
   const Q = queueApi(w);
 
-  it('queue A..E, lists A=(1,3), B=(1,3), C=(3,2): results A:1 B:3 C:2, queue after D,E,A,B,C, items 4 and 5 stay unallocated with no leftover round', async () => {
+  it('queue A..E, lists A=(1,3), B=(1,3), C=(3,2): results A:1 B:3 C:2, queue after D,E (winners out), items 4 and 5 stay unallocated with no leftover round', async () => {
     const admin = await session(w, { admin: true });
     const [a, b, c, d, e] = await Promise.all(['A', 'B', 'C', 'D', 'E'].map((ign) => session(w, { ign })));
     const names = new Map([a!, b!, c!, d!, e!].map((m) => [m.id, m.ign]));
@@ -131,21 +131,15 @@ describe('golden test end to end (FR-3.7 to FR-3.13)', () => {
     );
     expect(winners).toEqual({ [i1]: 'A@1', [i2]: 'C@3', [i3]: 'B@2', [i4]: null, [i5]: null });
 
-    // queue after allocation: D, E, A, B, C
+    // queue after allocation: D, E (winners A, B, C are taken out of the GEAR queue)
     const after = await queueOrder(w, 'GEAR');
-    expect(after.map((id) => names.get(id))).toEqual(['D', 'E', 'A', 'B', 'C']);
+    expect(after.map((id) => names.get(id))).toEqual(['D', 'E']);
     const seen = (await Q.queues(d!.h)).json().find((q: { category: string }) => q.category === 'GEAR');
-    expect(seen.entries.map((x: { memberId: string }) => names.get(x.memberId))).toEqual([
-      'D',
-      'E',
-      'A',
-      'B',
-      'C',
-    ]);
+    expect(seen.entries.map((x: { memberId: string }) => names.get(x.memberId))).toEqual(['D', 'E']);
     expect(seen.myRank).toBe(1);
     expect(
       (await Q.queues(c!.h)).json().find((q: { category: string }) => q.category === 'GEAR').myRank,
-    ).toBe(5);
+    ).toBeNull();
 
     // items 4 and 5 stay in this round without a winner: a queue round makes no leftover round
     expect(res.leftoverRoundId).toBeNull();

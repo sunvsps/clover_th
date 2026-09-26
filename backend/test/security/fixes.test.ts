@@ -209,7 +209,7 @@ describe('H-3 a failing allocation never breaks reads', () => {
     await db.prisma.roundQueueSnapshot.deleteMany({ where: { roundId: r.id } });
     expect(await sweeper.tick()).toBe(1);
     expect((await A.results(b!.h, r.id)).json().items[0].winner.memberId).toBe(a!.id);
-    expect(await queueOrder(wd, 'GEAR')).toEqual([b!.id, a!.id]);
+    expect(await queueOrder(wd, 'GEAR')).toEqual([b!.id]); // winner A left the queue
     await app.close();
   });
 });

@@ -242,10 +242,10 @@ describe('WP9 allocation through the API', () => {
     expect(by(b!.id)).toEqual(['RELIC']); // B: GEAR g1 and CARD c1 went to A (first in queue); only r2 left
     expect(won.map((i) => i.winnerId)).toEqual([a!.id, null, a!.id, a!.id, b!.id]);
     expect((await replayAllocation(w.db.prisma, r.id)).matches).toBe(true);
-    // every winner re-queued behind non-winners, per category
-    expect(await queueOrder(w, 'GEAR')).toEqual([b!.id, a!.id]);
-    expect(await queueOrder(w, 'CARD')).toEqual([b!.id, a!.id]);
-    expect(await queueOrder(w, 'RELIC')).toEqual([a!.id, b!.id]);
+    // every winner leaves the queue of the category they won, and only that one
+    expect(await queueOrder(w, 'GEAR')).toEqual([b!.id]);
+    expect(await queueOrder(w, 'CARD')).toEqual([b!.id]);
+    expect(await queueOrder(w, 'RELIC')).toEqual([]);
   });
 
   it('two members with the same first choice: the earlier in queue wins it, the other falls to the next item', async () => {
@@ -267,7 +267,7 @@ describe('WP9 allocation through the API', () => {
     for (const m of ms) await Q.setPrefs(m.h, r.id, [r.itemIds[0]!, r.itemIds[1]!]);
     await A.close(admin.h, r.id);
     expect(await stored(r.id)).toEqual([ms[0]!.id, ms[1]!.id]);
-    expect(await queueOrder(w, 'GEAR')).toEqual([ms[2]!.id, ms[3]!.id, ms[0]!.id, ms[1]!.id]);
+    expect(await queueOrder(w, 'GEAR')).toEqual([ms[2]!.id, ms[3]!.id]); // the two winners left the queue
 
     const short = await session(w);
     await Q.join(short.h, 'CARD');
@@ -284,7 +284,7 @@ describe('WP9 allocation through the API', () => {
     expect(res.leftoverRoundId).toBeNull();
   });
 
-  it('a member who submitted nothing, or whose items were all taken, keeps their position; latecomers stay ahead of new winners', async () => {
+  it('a member who submitted nothing, or whose items were all taken, keeps their position; the winner leaves the queue', async () => {
     const admin = await session(w, { admin: true });
     const [a, b, c, d, latecomer] = await sessions(w, 5);
     await joinInOrder(w, [a!, b!, c!, d!], 'GEAR');
@@ -297,8 +297,8 @@ describe('WP9 allocation through the API', () => {
     await Q.setPrefs(d!.h, r.id, []);
     await A.close(admin.h, r.id);
     expect(await stored(r.id)).toEqual([a!.id, null]);
-    // non-winners keep their relative order in front, the latecomer joined before the requeue so stays ahead of winner A
-    expect(await queueOrder(w, 'GEAR')).toEqual([b!.id, c!.id, d!.id, latecomer!.id, a!.id]);
+    // non-winners keep their relative order (the latecomer stays behind them); winner A is out
+    expect(await queueOrder(w, 'GEAR')).toEqual([b!.id, c!.id, d!.id, latecomer!.id]);
   });
 
   it('a member who left the queue during the window is not in the snapshot; their earlier list is ignored', async () => {
@@ -318,7 +318,7 @@ describe('WP9 allocation through the API', () => {
     });
     expect(snap.map((s) => s.memberId)).toEqual([b!.id, c!.id]);
     expect((await replayAllocation(w.db.prisma, r.id)).matches).toBe(true);
-    expect(await queueOrder(w, 'GEAR')).toEqual([c!.id, a!.id, b!.id]);
+    expect(await queueOrder(w, 'GEAR')).toEqual([c!.id, a!.id]); // winner B is out
   });
 
   it('items nobody listed AND items whose listers all lost out stay unallocated; no leftover round is made', async () => {
@@ -394,18 +394,21 @@ describe('WP9 allocation through the API', () => {
     expect(closed.allocatedAt).not.toBeNull();
     expect(await stored(r1.id)).toEqual([a!.id]);
 
+    expect(await queueOrder(w, 'GEAR')).toEqual([]); // the winner left the queue
+    await Q.join(a!.h, 'GEAR'); // and joins again for the next round
     const r2 = await openQueueRound(w, admin, gear(1));
     await Q.setPrefs(a!.h, r2.id, [r2.itemIds[0]!]);
     await setWindow(w, r2.id, '-10 seconds', '-1 second');
     expect((await A.results(a!.h, r2.id)).json().items[0].winner.memberId).toBe(a!.id); // lazy finalize on read
 
+    await Q.join(a!.h, 'GEAR');
     const r3 = await openQueueRound(w, admin, gear(1));
     await Q.setPrefs(a!.h, r3.id, [r3.itemIds[0]!]);
     await setWindow(w, r3.id, '-10 seconds', '-1 second');
     expect(await createSweeper({ prisma: w.db.prisma, tx: w.app.tx }).tick()).toBe(1);
     expect(await stored(r3.id)).toEqual([a!.id]);
-    // a winner is re-queued after every allocation and is the only one left in the queue
-    expect(await queueOrder(w, 'GEAR')).toEqual([a!.id]);
+    // a winner leaves the queue after every allocation
+    expect(await queueOrder(w, 'GEAR')).toEqual([]);
   });
 
   it('results: hidden before close, published to everyone after with queuePos (no leftover round); rank stays visible', async () => {
@@ -423,8 +426,8 @@ describe('WP9 allocation through the API', () => {
     expect(res.items[0].winner).toBeNull();
     expect(res.leftoverRoundId).toBeNull();
     expect((await A.mine(b!.h, r.id)).json()).toMatchObject({ myWinCount: 1 });
-    expect((await Q.queues(a!.h)).json()[0].myRank).toBe(1); // A (no win) is now first; B is behind
-    expect((await Q.queues(b!.h)).json()[0].myRank).toBe(2);
+    expect((await Q.queues(a!.h)).json()[0].myRank).toBe(1); // A (no win) keeps first place
+    expect((await Q.queues(b!.h)).json()[0].myRank).toBeNull(); // B won and left the queue
   });
 
   it('replay from the stored snapshot equals the stored results; tampering with a result is detected', async () => {
@@ -439,7 +442,7 @@ describe('WP9 allocation through the API', () => {
     const ok = await replayAllocation(w.db.prisma, r.id);
     expect(ok).toMatchObject({ matches: true, algorithmVersion: 1 });
     expect(ok.stored.map((x) => x.position)).toEqual([1, 2]);
-    // the queue moved on (winners re-queued), yet the replay still uses the frozen snapshot
+    // the queue moved on (winners taken out), yet the replay still uses the frozen snapshot
     expect((await queueOrder(w, 'GEAR'))[0]).toBe(ms[2]!.id);
     await w.db.prisma
       .$executeRaw`UPDATE "AuctionItem" SET "winnerId" = ${ms[3]!.id}::uuid WHERE id = ${r.itemIds[0]!}`;

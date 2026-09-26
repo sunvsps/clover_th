@@ -73,8 +73,8 @@ export default function QueueView({ isThai, isAdmin, memberId, members, jobs, no
           <h2>{t("Auction queue", "จองคิวประมูล")}</h2>
           <p>
             {t(
-              "Queue up ahead of time for Gear / Card / Relic (all three if you like). A ranked queue round only counts members who were in line when it opened. When it closes, items are handed out one per category in queue order, and each winner moves to the back of that queue.",
-              "ลงคิวไว้ล่วงหน้าสำหรับหมวด Gear / Card / Relic (ลงได้ทั้ง 3 คิว) รอบจัดอันดับคิวจะนับเฉพาะคนที่อยู่ในคิวตอนเปิดรอบ เมื่อปิดรอบ ระบบแจกของหมวดละ 1 ชิ้นตามลำดับคิว คนที่ได้ของจะถูกย้ายไปท้ายคิวของหมวดนั้น",
+              "Queue up ahead of time for Gear / Card / Relic (all three if you like). A ranked queue round only counts members who were in line when it opened. When it closes, items are handed out one per category in queue order, and each winner is taken out of that queue (join again for another).",
+              "ลงคิวไว้ล่วงหน้าสำหรับหมวด Gear / Card / Relic (ลงได้ทั้ง 3 คิว) รอบจัดอันดับคิวจะนับเฉพาะคนที่อยู่ในคิวตอนเปิดรอบ เมื่อปิดรอบ ระบบแจกของหมวดละ 1 ชิ้นตามลำดับคิว คนที่ได้ของจะถูกเอาออกจากคิวของหมวดนั้น (อยากได้อีกต้องลงคิวใหม่)",
             )}
           </p>
         </div>
@@ -102,7 +102,7 @@ export default function QueueView({ isThai, isAdmin, memberId, members, jobs, no
         </span>
         <ArrowRight size={13} />
         <span>
-          <b>4</b> {t("Round ends: one item per category by queue order, winners go to the back", "ปิดรอบ: แจกหมวดละ 1 ชิ้นตามลำดับคิว คนที่ได้ของไปท้ายคิว")}
+          <b>4</b> {t("Round ends: one item per category by queue order, winners leave that queue", "ปิดรอบ: แจกหมวดละ 1 ชิ้นตามลำดับคิว คนที่ได้ของออกจากคิวหมวดนั้น")}
         </span>
       </div>
 
