@@ -465,3 +465,68 @@ export async function cancelRound(
   });
   return readRoundOrThrow(tx, id);
 }
+
+/**
+ * "Leftover draft" of a CLOSED live-claim round: a new DRAFT live-claim round with the same settings and every item
+ * copied into the same slot, where each item someone claimed (or that was already disabled) is disabled, so only
+ * what nobody took can be claimed again. It repeats once only: a leftover round itself can't make another one. Linked through sourceRoundId (unique): asking again returns the draft that
+ * already exists instead of creating a second one. Under the source round's FOR UPDATE lock, so two admins clicking
+ * at once get the same draft.
+ */
+export async function createLeftoverDraft(
+  tx: Tx,
+  sourceId: number,
+  actorId: string,
+  requestId?: string,
+): Promise<{ round: RoundRow; created: boolean }> {
+  await withRoundLock(tx, sourceId, 'UPDATE');
+  const source = await readRoundOrThrow(tx, sourceId);
+  if (source.type !== 'LIVE_CLAIM') {
+    throw new AppError('LEFTOVER_LIVE_CLAIM_ONLY', 409, 'Only a live-claim round has a leftover draft made on request');
+  }
+  if (source.status !== 'CLOSED') {
+    throw new AppError('ROUND_NOT_CLOSED', 409, 'The round must be closed first', { status: source.status });
+  }
+  const [link] = await tx.$queryRaw<{ sourceRoundId: number | null }[]>`
+    SELECT "sourceRoundId" FROM "AuctionRound" WHERE id = ${sourceId}`;
+  if (link?.sourceRoundId != null) {
+    throw new AppError('LEFTOVER_NOT_REPEATABLE', 409, 'A leftover round cannot make another leftover round', {
+      sourceRoundId: link.sourceRoundId,
+    });
+  }
+  const [existing] = await tx.$queryRaw<{ id: number }[]>`
+    SELECT id FROM "AuctionRound" WHERE "sourceRoundId" = ${sourceId}`;
+  if (existing) return { round: await readRoundOrThrow(tx, existing.id), created: false };
+
+  const items = await readItems(tx, sourceId);
+  if (!items.some((i) => !i.disabled && !i.winner)) {
+    throw new AppError('NO_LEFTOVER_ITEMS', 409, 'Every item of this round was claimed or disabled');
+  }
+  const created = await tx.auctionRound.create({
+    data: {
+      type: 'LIVE_CLAIM',
+      name: `${source.name} (leftovers)`.slice(0, 100),
+      durationSec: source.durationSec,
+      winCap: source.winCap ?? 5,
+      startDelaySec: source.startDelaySec,
+      sourceRoundId: sourceId,
+      createdById: actorId,
+      items: {
+        create: items.map((it, i) => ({
+          ...itemData({ ...it, disabled: it.disabled || it.winner !== null }),
+          sortOrder: i,
+        })),
+      },
+    },
+  });
+  await record(tx, {
+    actorType: 'MEMBER',
+    actorId,
+    action: 'auction.round.leftover',
+    entityType: 'auction_round',
+    entityId: String(created.id),
+    meta: { sourceRoundId: sourceId, items: items.length, open: items.filter((i) => !i.disabled && !i.winner).length },
+    requestId,
+  });
+  return { round: await readRoundOrThrow(tx, created.id), created: true };
+}

@@ -3242,6 +3242,157 @@
         }
       }
     },
+    "/api/v1/admin/auctions/rounds/{id}/leftover": {
+      "post": {
+        "summary": "Leftover draft of a closed live-claim round (created once, claimed items disabled)",
+        "tags": [
+          "auctions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 9007199254740991
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "LIVE_CLAIM",
+                        "QUEUE_RANKED"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "OPEN",
+                        "CLOSED",
+                        "CANCELLED"
+                      ]
+                    },
+                    "durationSec": {
+                      "type": "number"
+                    },
+                    "winCap": {
+                      "nullable": true,
+                      "type": "number"
+                    },
+                    "startDelaySec": {
+                      "type": "number"
+                    },
+                    "opensAt": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "closesAt": {
+                      "nullable": true,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "name",
+                    "status",
+                    "durationSec",
+                    "winCap",
+                    "startDelaySec",
+                    "opensAt",
+                    "closesAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auctions/rounds": {
       "get": {
         "tags": [
@@ -3321,6 +3472,14 @@
                           },
                           "itemCount": {
                             "type": "number"
+                          },
+                          "sourceRoundId": {
+                            "nullable": true,
+                            "type": "number"
+                          },
+                          "leftoverRoundId": {
+                            "nullable": true,
+                            "type": "number"
                           }
                         },
                         "required": [
@@ -3333,7 +3492,9 @@
                           "startDelaySec",
                           "opensAt",
                           "closesAt",
-                          "itemCount"
+                          "itemCount",
+                          "sourceRoundId",
+                          "leftoverRoundId"
                         ],
                         "additionalProperties": false
                       }

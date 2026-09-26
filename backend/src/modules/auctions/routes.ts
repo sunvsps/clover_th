@@ -22,6 +22,7 @@ import {
 import {
   cancelRound,
   closeRound,
+  createLeftoverDraft,
   createRound,
   dbNow,
   expiredOpenRounds,
@@ -221,6 +222,25 @@ export default async function auctionRoutes(app: FastifyInstance) {
     async (req) => roundOut(await app.tx((tx) => cancelRound(tx, req.params.id, req.auth!.memberId, req.id))),
   );
 
+  r.post(
+    '/api/v1/admin/auctions/rounds/:id/leftover',
+    {
+      schema: {
+        tags: ['auctions'],
+        summary: 'Leftover draft of a closed live-claim round (created once, claimed items disabled)',
+        params: idParam,
+        response: { 200: roundBase, 201: roundBase },
+      },
+      onRequest: [requireAdmin],
+    },
+    async (req, reply) => {
+      const { round, created } = await app.tx((tx) =>
+        createLeftoverDraft(tx, req.params.id, req.auth!.memberId, req.id),
+      );
+      return reply.status(created ? 201 : 200).send(roundOut(round));
+    },
+  );
+
   // ---------- members ----------
   r.get(
     '/api/v1/auctions/rounds',
@@ -231,7 +251,15 @@ export default async function auctionRoutes(app: FastifyInstance) {
         response: {
           200: z.object({
             serverTime: z.string(),
-            rounds: z.array(roundBase.extend({ itemCount: z.number() })),
+            rounds: z.array(
+              roundBase.extend({
+                itemCount: z.number(),
+                /** set on a leftover round: the round it was made from */
+                sourceRoundId: z.number().nullable(),
+                /** set once a leftover round was made from this one */
+                leftoverRoundId: z.number().nullable(),
+              }),
+            ),
           }),
         },
       },
@@ -247,7 +275,7 @@ export default async function auctionRoutes(app: FastifyInstance) {
         },
         orderBy: { id: 'desc' },
         take: 100,
-        include: { _count: { select: { items: true } } },
+        include: { _count: { select: { items: true } }, leftoverDraft: { select: { id: true } } },
       });
       return {
         serverTime: (await dbNow(app.prisma)).toISOString(),
@@ -256,6 +284,8 @@ export default async function auctionRoutes(app: FastifyInstance) {
           .map((x) => ({
             ...roundOut({ ...x, type: x.type, status: x.status } as unknown as RoundRow),
             itemCount: x._count.items,
+            sourceRoundId: x.sourceRoundId,
+            leftoverRoundId: x.leftoverDraft?.id ?? null,
           })),
       };
     },

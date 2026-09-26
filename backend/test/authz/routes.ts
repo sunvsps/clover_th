@@ -182,6 +182,12 @@ export const routes: RouteSpec[] = [
     url: '/api/v1/admin/auctions/rounds/999999/cancel',
     auth: 'admin',
   },
+  {
+    method: 'POST',
+    pattern: '/api/v1/admin/auctions/rounds/:id/leftover',
+    url: '/api/v1/admin/auctions/rounds/999999/leftover',
+    auth: 'admin',
+  },
   { method: 'GET', pattern: '/api/v1/auctions/rounds', url: '/api/v1/auctions/rounds', auth: 'member' },
   {
     method: 'GET',

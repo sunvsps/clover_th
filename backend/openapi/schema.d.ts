@@ -1724,6 +1724,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/auctions/rounds/{id}/leftover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leftover draft of a closed live-claim round (created once, claimed items disabled) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            /** @enum {string} */
+                            type: "LIVE_CLAIM" | "QUEUE_RANKED";
+                            name: string;
+                            /** @enum {string} */
+                            status: "DRAFT" | "OPEN" | "CLOSED" | "CANCELLED";
+                            durationSec: number;
+                            winCap: number | null;
+                            startDelaySec: number;
+                            opensAt: string | null;
+                            closesAt: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auctions/rounds": {
         parameters: {
             query?: never;
@@ -1763,6 +1834,8 @@ export interface paths {
                                 opensAt: string | null;
                                 closesAt: string | null;
                                 itemCount: number;
+                                sourceRoundId: number | null;
+                                leftoverRoundId: number | null;
                             }[];
                         };
                     };

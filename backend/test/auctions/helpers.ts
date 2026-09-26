@@ -47,6 +47,8 @@ export const api = (w: World) => ({
     }),
   results: (h: H, id: number) => w.app.inject({ url: `/api/v1/auctions/rounds/${id}/results`, headers: h }),
   mine: (h: H, id: number) => w.app.inject({ url: `/api/v1/auctions/rounds/${id}/results/me`, headers: h }),
+  leftover: (h: H, id: number) =>
+    w.app.inject({ method: 'POST', url: `/api/v1/admin/auctions/rounds/${id}/leftover`, headers: h }),
 });
 
 export const items = (n: number, category: Cat = 'PET') =>
