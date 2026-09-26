@@ -336,7 +336,7 @@ export function fakeAuctions(opts: { me: Me; rounds: FakeRound[]; serverNow: () 
 
   server.use(
     http.get("*/api/v1/auctions/rounds", () =>
-      HttpResponse.json({ serverTime: new Date(opts.serverNow()).toISOString(), rounds: [...rounds.values()].filter((r) => visible(r)).map((r) => ({ ...summary(r), itemCount: r.items.length, sourceRoundId: null, leftoverRoundId: null })).reverse() }, { headers: stamp() }),
+      HttpResponse.json({ serverTime: new Date(opts.serverNow()).toISOString(), rounds: [...rounds.values()].filter((r) => visible(r)).map((r) => ({ ...summary(r), itemCount: r.items.length, activeItemCount: r.items.length, claimedCount: r.items.filter((i) => i.winner).length, sourceRoundId: null, leftoverRoundId: null })).reverse() }, { headers: stamp() }),
     ),
     http.get("*/api/v1/auctions/rounds/:id", ({ request, params }) => {
       const r = visible(rounds.get(Number(params.id)));
@@ -453,12 +453,13 @@ type FARound = { id: number; type: "LIVE_CLAIM" | "QUEUE_RANKED"; name: string; 
  * Stand-in for the admin API (members, jobs, activities, layout, notifications, audit log, round management).
  * Every route answers 403 ADMIN_REQUIRED unless `me.isAdmin`, like the server.
  */
-export function fakeAdmin(opts: { me: Me; rounds?: FARound[]; notifications?: { id: number; status: "PENDING" | "SENDING" | "SENT" | "DEAD"; eventType?: string }[]; audit?: { id: number; action: string; actorId?: string }[]; layoutViolation?: { teamId: number; placed: number; size: number }[]; duplicateLabel?: string }) {
+export function fakeAdmin(opts: { me: Me; rounds?: FARound[]; notifications?: { id: number; status: "PENDING" | "SENDING" | "SENT" | "DEAD"; eventType?: string }[]; audit?: { id: number; action: string; actorId?: string }[]; layoutViolation?: { teamId: number; placed: number; size: number }[]; duplicateLabel?: string; queues?: Partial<Record<"GEAR" | "CARD" | "RELIC", string[]>> }) {
   const calls: { method: string; path: string; body?: unknown; query?: Record<string, string> }[] = [];
   const members: FAMember[] = wireMembers.map((m, i) => ({ id: m.id, ign: m.ign, nickname: m.nickname, jobId: m.jobId, discordId: String(900000000000000000n + BigInt(i)), isActive: true, isAdmin: m.id === opts.me.memberId && opts.me.isAdmin, isIncomplete: i === 3 }));
   let jobs = wireJobs.map((j) => ({ ...j }));
   const rounds = [...(opts.rounds ?? [])];
   let nextRoundId = 100;
+  const queues: Record<"GEAR" | "CARD" | "RELIC", string[]> = { GEAR: [], CARD: [], RELIC: [], ...opts.queues };
   const notifications = (opts.notifications ?? []).map((n) => ({ eventType: "activity.promoted", target: "DISCORD_DM", attempts: n.status === "DEAD" ? 5 : 0, maxAttempts: 5, nextAttemptAt: "2026-09-21T00:00:00Z", lastError: n.status === "DEAD" ? "Cannot send messages to this user" : null, lastErrorCode: n.status === "DEAD" ? "50007" : null, sentAt: null, createdAt: "2026-09-21T03:00:00Z", entityType: null, entityId: null, payload: {}, ...n }));
   const audit = (opts.audit ?? []).map((a) => ({ at: "2026-09-21T03:30:00Z", actorType: "MEMBER", actorId: a.actorId ?? opts.me.memberId, entityType: "occurrence", entityId: "1", meta: { note: "x" }, requestId: null, ...a }));
   const forbid = () => HttpResponse.json({ error: { code: "ADMIN_REQUIRED", message: "x", details: {} } }, { status: 403 });
@@ -538,7 +539,7 @@ export function fakeAdmin(opts: { me: Me; rounds?: FARound[]; notifications?: { 
       return HttpResponse.json({ items: page, nextCursor: rows.length > 2 ? page.at(-1)!.id : null });
     })),
     // round management
-    http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [...rounds].reverse().map((r) => ({ ...wireRound(r), itemCount: r.items.length, sourceRoundId: r.sourceRoundId ?? null, leftoverRoundId: r.leftoverRoundId ?? null })) })),
+    http.get("*/api/v1/auctions/rounds", () => HttpResponse.json({ serverTime: new Date().toISOString(), rounds: [...rounds].reverse().map((r) => ({ ...wireRound(r), itemCount: r.items.length, activeItemCount: r.items.filter((i) => !i.disabled).length, claimedCount: r.items.filter((i) => i.claimed).length, sourceRoundId: r.sourceRoundId ?? null, leftoverRoundId: r.leftoverRoundId ?? null })) })),
     http.get("*/api/v1/auctions/rounds/:id", ({ params }) => {
       const r = rounds.find((x) => x.id === Number(params.id))!;
       return HttpResponse.json({ ...wireRound(r), serverTime: new Date().toISOString(), items: r.items.map(({ claimed, ...i }) => ({ disabled: false, ...i, winner: claimed ? { memberId: "m-bo", wonAt: "2026-09-21T10:00:00Z", queuePos: null } : null })), myWinCount: 0, eligibleCategories: [] });
@@ -588,9 +589,20 @@ export function fakeAdmin(opts: { me: Me; rounds?: FARound[]; notifications?: { 
       rounds.push(draft);
       return HttpResponse.json(wireRound(draft), { status: 201 });
     })),
+    http.get("*/api/v1/auctions/queues", () =>
+      HttpResponse.json((["GEAR", "CARD", "RELIC"] as const).map((category) => ({ category, length: queues[category].length, myRank: null, entries: queues[category].map((memberId, i) => ({ rank: i + 1, memberId })) }))),
+    ),
+    http.put("*/api/v1/admin/auctions/queues/:category", admin(({ params }) => {
+      const category = params.category as "GEAR" | "CARD" | "RELIC";
+      const body = calls.at(-1)!.body as { memberIds: string[]; expected?: string[] };
+      if (rounds.some((r) => r.type === "QUEUE_RANKED" && r.status === "OPEN")) return err("QUEUE_ROUND_OPEN", 409, { roundId: rounds.find((r) => r.status === "OPEN")!.id });
+      if (body.expected && body.expected.join() !== queues[category].join()) return err("QUEUE_CHANGED", 409);
+      queues[category] = [...body.memberIds];
+      return HttpResponse.json({ category, length: body.memberIds.length, entries: body.memberIds.map((memberId, i) => ({ rank: i + 1, memberId })) });
+    })),
     http.get("*/api/v1/admin/auctions/rounds/:id/preferences", admin(() => HttpResponse.json({ roundId: 1, lists: [{ memberId: "m-bo", itemIds: [2, 1] }] }))),
   );
-  return { calls, members, get jobs() { return jobs; }, rounds, notifications, activities };
+  return { calls, members, get jobs() { return jobs; }, rounds, notifications, activities, queues };
 }
 
 function wireActivitiesAdmin() {

@@ -18,6 +18,7 @@ import {
   readQueueHistory,
   readQueues,
   removeFromQueue,
+  replaceQueue,
 } from './queue.js';
 import {
   cancelRound,
@@ -254,6 +255,10 @@ export default async function auctionRoutes(app: FastifyInstance) {
             rounds: z.array(
               roundBase.extend({
                 itemCount: z.number(),
+                /** items that are not disabled (what can be claimed or allocated) */
+                activeItemCount: z.number(),
+                /** items that have a winner (claimed live, or allocated when a queue round closed) */
+                claimedCount: z.number(),
                 /** set on a leftover round: the round it was made from */
                 sourceRoundId: z.number().nullable(),
                 /** set once a leftover round was made from this one */
@@ -277,6 +282,14 @@ export default async function auctionRoutes(app: FastifyInstance) {
         take: 100,
         include: { _count: { select: { items: true } }, leftoverDraft: { select: { id: true } } },
       });
+      const ids = rows.map((x) => x.id);
+      const counts = ids.length
+        ? await app.prisma.$queryRaw<{ roundId: number; active: number; claimed: number }[]>`
+            SELECT "roundId", (count(*) FILTER (WHERE NOT disabled))::int AS active,
+                   (count(*) FILTER (WHERE "winnerId" IS NOT NULL))::int AS claimed
+            FROM "AuctionItem" WHERE "roundId" = ANY(${ids}::int[]) GROUP BY "roundId"`
+        : [];
+      const countOf = new Map(counts.map((c) => [c.roundId, c]));
       return {
         serverTime: (await dbNow(app.prisma)).toISOString(),
         rounds: rows
@@ -284,6 +297,8 @@ export default async function auctionRoutes(app: FastifyInstance) {
           .map((x) => ({
             ...roundOut({ ...x, type: x.type, status: x.status } as unknown as RoundRow),
             itemCount: x._count.items,
+            activeItemCount: countOf.get(x.id)?.active ?? 0,
+            claimedCount: countOf.get(x.id)?.claimed ?? 0,
             sourceRoundId: x.sourceRoundId,
             leftoverRoundId: x.leftoverDraft?.id ?? null,
           })),
@@ -509,6 +524,39 @@ export default async function auctionRoutes(app: FastifyInstance) {
     async (req) => {
       const category = parseCategory(req.params.category);
       return app.tx((tx) => removeFromQueue(tx, category, req.params.memberId, req.auth!.memberId, req.id));
+    },
+  );
+
+  r.put(
+    '/api/v1/admin/auctions/queues/:category',
+    {
+      schema: {
+        tags: ['auctions'],
+        summary: 'Admin: rewrite one queue in the given order (add, remove, reorder); refused while a queue round of it is open',
+        params: categoryParam,
+        body: z
+          .object({
+            /** the whole queue, first = rank 1 */
+            memberIds: z.array(z.uuid()).max(1000),
+            /** the order the admin loaded; a queue that changed since is not overwritten (QUEUE_CHANGED) */
+            expected: z.array(z.uuid()).max(1000).optional(),
+          })
+          .strict(),
+        response: {
+          200: z.object({
+            category: z.string(),
+            length: z.number(),
+            entries: z.array(z.object({ rank: z.number(), memberId: z.string() })),
+          }),
+        },
+      },
+      onRequest: [requireAdmin],
+    },
+    async (req) => {
+      const category = parseCategory(req.params.category);
+      return app.tx((tx) =>
+        replaceQueue(tx, category, req.body.memberIds, req.body.expected, req.auth!.memberId, req.id),
+      );
     },
   );
 

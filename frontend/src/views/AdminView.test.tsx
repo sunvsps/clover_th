@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -58,7 +58,7 @@ describe("who can see the admin page", () => {
 
   it("there is no way to grant admin or to add or delete a member, on any tab", async () => {
     const { user } = setup(meAdmin);
-    for (const name of ["Auctions", "Members", "Activities", "Team layout", "Jobs", "Notifications", "Audit log"]) {
+    for (const name of ["Auctions", "Queues", "Members", "Activities", "Team layout", "Jobs", "Notifications", "Audit log"]) {
       await tab(user, name);
       await waitFor(() => expect(document.querySelector("[data-admin]")).toBeInTheDocument());
       await new Promise((r) => setTimeout(r, 30)); // let the tab's data load, so its rows are checked too
@@ -249,6 +249,18 @@ describe("audit log", () => {
 });
 
 describe("auction management", () => {
+  /** Opens a round's "⋯" menu and picks an action. */
+  const act = async (user: ReturnType<typeof userEvent.setup>, row: HTMLElement, name: string) => {
+    await user.click(within(row).getByRole("button", { name: /Actions for round/ }));
+    await user.click(within(row).getByRole("menuitem", { name }));
+  };
+  /** The action names in a round's "⋯" menu (the menu is closed again afterwards). */
+  const actionsOf = async (user: ReturnType<typeof userEvent.setup>, row: HTMLElement) => {
+    await user.click(within(row).getByRole("button", { name: /Actions for round/ }));
+    const names = within(row).getAllByRole("menuitem").map((m) => m.textContent?.trim());
+    await user.keyboard("{Escape}");
+    return names;
+  };
   const draftRound = { id: 1, type: "LIVE_CLAIM" as const, name: "Old draft", status: "DRAFT" as const, durationSec: 300, winCap: 5, startDelaySec: 3, items: [{ id: 1, name: "Pet 1", category: "PET", rarity: null, imageUrl: null }] };
 
   it("creates a round as a draft (auto-generated items) and then starts it", async () => {
@@ -268,12 +280,13 @@ describe("auction management", () => {
     ]);
     const row = await screen.findByText(/Friday drops/).then((e) => e.closest("tr") as HTMLElement);
     expect(row).toHaveTextContent("Draft");
-    await user.click(within(row).getByRole("button", { name: "Start…" }));
+    expect(row).toHaveTextContent("0/4"); // taken out of claimable
+    await act(user, row, "Start…");
     await user.click(within(row).getByRole("button", { name: "Start round" }));
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Round started."));
     await waitFor(() => expect(row).toHaveTextContent("Open"));
     expect(fake.calls.find((c) => c.path.endsWith("/start"))!.body).toEqual({ startDelaySec: 3, durationSec: 300 });
-    await user.click(within(row).getByRole("button", { name: "Close now" }));
+    await act(user, row, "Close now");
     await waitFor(() => expect(row).toHaveTextContent("Closed"));
   });
 
@@ -343,7 +356,7 @@ describe("auction management", () => {
   it("a draft can be edited and saved (PATCH)", async () => {
     const { fake, user } = setup(meAdmin, { rounds: [draftRound] });
     const row = await screen.findByText(/Old draft/).then((e) => e.closest("tr") as HTMLElement);
-    await user.click(within(row).getByRole("button", { name: "Edit" }));
+    await act(user, row, "Edit");
     const name = await screen.findByLabelText("Name");
     await user.clear(name);
     await user.type(name, "New name");
@@ -355,12 +368,25 @@ describe("auction management", () => {
     const closed = { ...draftRound, id: 1, name: "Friday", status: "CLOSED" as const, items: [{ id: 1, name: "Item 1", category: null, rarity: null, imageUrl: null, claimed: true }, { id: 2, name: "Item 2", category: null, rarity: null, imageUrl: null }] };
     const { fake, user } = setup(meAdmin, { rounds: [closed] });
     const row = await screen.findByText(/#1 Friday$/).then((e) => e.closest("tr") as HTMLElement);
-    await user.click(within(row).getByRole("button", { name: "Leftover draft" }));
+    await act(user, row, "Leftover draft");
     await screen.findByRole("form", { name: "Edit draft round" });
     expect(fake.calls.filter((c) => c.path.endsWith("/rounds/1/leftover"))).toHaveLength(1);
     expect(screen.getByRole("checkbox", { name: "Use Item 1 on page 1" })).not.toBeChecked(); // claimed in round #1
-    expect(screen.getByRole("checkbox", { name: "Use Item 2 on page 1" })).toBeChecked();    await waitFor(() => expect(within(row).queryByRole("button", { name: "Leftover draft" })).not.toBeInTheDocument()); // once only
-    expect((await screen.findByText(/leftovers/)).closest("tr")).toHaveTextContent("from #1");
+    expect(screen.getByRole("checkbox", { name: "Use Item 2 on page 1" })).toBeChecked();
+    // once only: the source row loses the action, and the leftover row sits right under it
+    const leftoverRow = (await screen.findByText(/leftovers/)).closest("tr") as HTMLElement;
+    expect(leftoverRow.previousElementSibling).toBe(row);
+    expect(leftoverRow).toHaveClass("round-nested");
+    expect(within(row).queryByRole("button", { name: /Actions for round/ })).not.toBeInTheDocument(); // nothing left to do on it
+  });
+
+  it("shows the taken count, the status and the countdown of an open round", async () => {
+    const open = { ...draftRound, id: 2, name: "Live now", status: "OPEN" as const, items: [{ id: 1, name: "A", category: null, rarity: null, imageUrl: null, claimed: true }, { id: 2, name: "B", category: null, rarity: null, imageUrl: null }, { id: 3, name: "C", category: null, rarity: null, imageUrl: null, disabled: true }] };
+    setup(meAdmin, { rounds: [open] });
+    const row = await screen.findByText(/#2 Live now$/).then((e) => e.closest("tr") as HTMLElement);
+    expect(row).toHaveTextContent("Open");
+    expect(row).toHaveTextContent("1/2"); // the disabled item is not counted
+    expect(row).toHaveClass("round-open");
   });
 
   it("only a closed live-claim round that is not itself a leftover (and has none yet) offers a leftover draft", async () => {
@@ -368,9 +394,14 @@ describe("auction management", () => {
     const open = { ...draftRound, id: 2, name: "Live now", status: "OPEN" as const };
     const repeated = { ...draftRound, id: 3, name: "Friday", status: "CLOSED" as const, leftoverRoundId: 4 };
     const leftover = { ...draftRound, id: 4, name: "Friday (leftovers)", status: "CLOSED" as const, sourceRoundId: 3 };
-    setup(meAdmin, { rounds: [queue, open, repeated, leftover] });
+    const { user } = setup(meAdmin, { rounds: [queue, open, repeated, leftover, { ...draftRound, id: 5, name: "Plain", status: "CLOSED" as const }] });
     await screen.findByText(/#2 Live now$/);
-    expect(screen.queryByRole("button", { name: "Leftover draft" })).not.toBeInTheDocument();
+    const rowOf = (re: RegExp) => screen.getByText(re).closest("tr") as HTMLElement;
+    expect(await actionsOf(user, rowOf(/#1 Queue round$/))).toEqual(["Preference lists"]);
+    expect(await actionsOf(user, rowOf(/#2 Live now$/))).toEqual(["Close now", "Cancel round"]);
+    expect(within(rowOf(/#3 Friday$/)).queryByRole("button", { name: /Actions for round/ })).not.toBeInTheDocument();
+    expect(within(rowOf(/#4 Friday \(leftovers\)$/)).queryByRole("button", { name: /Actions for round/ })).not.toBeInTheDocument();
+    expect(await actionsOf(user, rowOf(/#5 Plain$/))).toEqual(["Leftover draft"]);
   });
 
   it("starting the leftover draft while another live-claim round is open explains ANOTHER_ROUND_OPEN", async () => {
@@ -378,19 +409,87 @@ describe("auction management", () => {
     const open = { ...draftRound, id: 3, name: "Another round", status: "OPEN" as const };
     const { user } = setup(meAdmin, { rounds: [closed, open] });
     const closedRow = await screen.findByText(/#1 Friday$/).then((e) => e.closest("tr") as HTMLElement);
-    await user.click(within(closedRow).getByRole("button", { name: "Leftover draft" }));
+    await act(user, closedRow, "Leftover draft");
     await screen.findByRole("form", { name: "Edit draft round" });
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     const draftRow = (await screen.findByText(/leftovers/)).closest("tr") as HTMLElement;
-    await user.click(within(draftRow).getByRole("button", { name: "Start…" }));
+    await act(user, draftRow, "Start…");
     await user.click(within(draftRow).getByRole("button", { name: "Start round" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Another live claim round (#3) is already open. Only one round of each type can be open at a time: close it first, then start this one.");
+  });
+
+  it("after close, each item shows who ranked it and the winner first with a trophy", async () => {
+    const queue = { ...draftRound, id: 1, name: "Q", type: "QUEUE_RANKED" as const, status: "CLOSED" as const, winCap: null, items: [{ id: 1, name: "Gear 1", category: "GEAR", rarity: null, imageUrl: null, claimed: true }, { id: 2, name: "Gear 2", category: "GEAR", rarity: null, imageUrl: null }, { id: 3, name: "Gear 3", category: "GEAR", rarity: null, imageUrl: null }] };
+    const { user } = setup(meAdmin, { rounds: [queue] });
+    await act(user, await screen.findByText(/#1 Q$/).then((e) => e.closest("tr") as HTMLElement), "Preference lists");
+    const view = await screen.findByTestId("prefs-view");
+    const row = (label: string) => view.querySelector(`li[data-item="${label}"]`) as HTMLElement;
+    expect(row("P1·1")).toHaveClass("won");
+    expect(row("P1·1").querySelector(".prefs-person.win")).toHaveTextContent("Borank 2"); // Bo won it, it was their 2nd pick
+    expect(row("P1·2")).toHaveTextContent("Bo1");
+    expect(row("P1·2")).toHaveTextContent("nobody got it");
+    expect(row("P1·3")).toHaveTextContent("nobody ranked it");
+    expect([...view.querySelectorAll("li[data-item]")].map((li) => li.getAttribute("data-item"))).toEqual(["P1·1", "P1·2", "P1·3"]); // board order
+    expect(view).toHaveTextContent("1 won an item");
+    await user.click(within(view).getAllByRole("button", { name: "Close" })[0]!);
+    expect(screen.queryByTestId("prefs-view")).not.toBeInTheDocument();
   });
 
   it("shows every member's preference list of a queue round", async () => {
     const queue = { ...draftRound, id: 1, name: "Q", type: "QUEUE_RANKED" as const, status: "OPEN" as const, winCap: null, items: [{ id: 1, name: "Gear 1", category: "GEAR", rarity: null, imageUrl: null }, { id: 2, name: "Gear 2", category: "GEAR", rarity: null, imageUrl: null }] };
     const { user } = setup(meAdmin, { rounds: [queue] });
-    await user.click(await screen.findByRole("button", { name: "Preference lists" }));
-    expect(await screen.findByTestId("prefs-view")).toHaveTextContent("Bo: 1. Page 1 / Item 2 2. Page 1 / Item 1");
+    await act(user, await screen.findByText(/#1 Q$/).then((e) => e.closest("tr") as HTMLElement), "Preference lists");
+    const view = await screen.findByTestId("prefs-view");
+    expect(view.querySelector('li[data-item="P1·2"]')).toHaveTextContent("Bo1");
+    expect(view.querySelector('li[data-item="P1·1"]')).toHaveTextContent("Bo2");
+    expect(view).toHaveTextContent("Results after the round closes"); // still open: no winners shown yet
+  });
+});
+
+describe("queue editor", () => {
+  const order = () => [...document.querySelectorAll(".queue-edit-list li[data-member]")].map((li) => li.getAttribute("data-member"));
+
+  it("moves, removes and adds members, then saves the whole order with the order it was loaded from", async () => {
+    const { fake, user, notify } = setup(meAdmin, { queues: { GEAR: ["m-aria", "m-bo", "m-cleo"] } });
+    await tab(user, "Queues");
+    await waitFor(() => expect(order()).toEqual(["Aria", "Bo", "Cleo"]));
+    expect(screen.getByRole("button", { name: /Save queue/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Move Cleo up" }));
+    await user.click(screen.getByRole("button", { name: "Remove Aria" }));
+    await user.type(screen.getByRole("combobox", { name: "Member to add" }), "da");
+    await user.click(screen.getByRole("option", { name: /Dax/ }));
+    await user.click(screen.getByRole("button", { name: /Add to queue/ }));
+    expect(order()).toEqual(["Cleo", "Bo", "Dax"]);
+    await user.click(screen.getByRole("button", { name: /Save queue/ }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Gear queue saved."));
+    const put = fake.calls.find((c) => c.method === "PUT" && c.path.endsWith("/admin/auctions/queues/GEAR"))!;
+    expect(put.body).toEqual({ memberIds: ["m-cleo", "m-bo", "m-dax"], expected: ["m-aria", "m-bo", "m-cleo"] });
+    expect(fake.queues.GEAR).toEqual(["m-cleo", "m-bo", "m-dax"]);
+  });
+
+  it("a row can be dragged onto another position", async () => {
+    const { user } = setup(meAdmin, { queues: { CARD: ["m-aria", "m-bo", "m-cleo"] } });
+    await tab(user, "Queues");
+    await user.click(screen.getByRole("tab", { name: "Card" }));
+    await waitFor(() => expect(order()).toEqual(["Aria", "Bo", "Cleo"]));
+    const rows = document.querySelectorAll(".queue-edit-list li[data-member]");
+    const data = new Map<string, string>();
+    const dataTransfer = { setData: (k: string, v: string) => data.set(k, v), getData: (k: string) => data.get(k) ?? "", effectAllowed: "" };
+    fireEvent.dragStart(rows[2]!, { dataTransfer });
+    fireEvent.dragOver(rows[0]!, { dataTransfer });
+    fireEvent.drop(rows[0]!, { dataTransfer });
+    expect(order()).toEqual(["Cleo", "Aria", "Bo"]);
+    expect(screen.getByRole("button", { name: /Save queue/ })).toBeEnabled();
+  });
+
+  it("explains QUEUE_ROUND_OPEN when a queue round is open", async () => {
+    const open = { id: 7, type: "QUEUE_RANKED" as const, name: "Q", status: "OPEN" as const, durationSec: 300, winCap: null, startDelaySec: 3, items: [] };
+    const { user } = setup(meAdmin, { rounds: [open], queues: { GEAR: ["m-aria", "m-bo"] } });
+    await tab(user, "Queues");
+    expect(await screen.findByText(/A queue round is open \(#7\)/)).toBeInTheDocument();
+    await waitFor(() => expect(order()).toEqual(["Aria", "Bo"]));
+    await user.click(screen.getByRole("button", { name: "Move Bo up" }));
+    await user.click(screen.getByRole("button", { name: /Save queue/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A queue round of this category is open. Edit the queue after it closes.");
   });
 });

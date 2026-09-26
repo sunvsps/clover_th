@@ -1881,6 +1881,8 @@ export interface paths {
                                 opensAt: string | null;
                                 closesAt: string | null;
                                 itemCount: number;
+                                activeItemCount: number;
+                                claimedCount: number;
                                 sourceRoundId: number | null;
                                 leftoverRoundId: number | null;
                             }[];
@@ -2316,6 +2318,58 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/auctions/queues/{category}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Admin: rewrite one queue in the given order (add, remove, reorder); refused while a queue round of it is open */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    category: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        memberIds: string[];
+                        expected?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            category: string;
+                            length: number;
+                            entries: {
+                                rank: number;
+                                memberId: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;

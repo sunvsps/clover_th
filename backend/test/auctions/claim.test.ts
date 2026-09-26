@@ -210,9 +210,12 @@ describe('WP8 polling, results', () => {
   it('list shows summaries with server time', async () => {
     const admin = await session(w, { admin: true });
     const a = await session(w);
-    const r = await openRound(w, admin);
+    const r = await openRound(w, admin, { items: [{ name: 'A' }, { name: 'B' }, { name: 'C', disabled: true }] });
+    await A.claim(a.h, r.id, r.itemIds[0]!);
     const l = (await A.list(a.h, '?status=OPEN')).json();
-    expect(l.rounds).toEqual([expect.objectContaining({ id: r.id, status: 'OPEN', itemCount: 3 })]);
+    expect(l.rounds).toEqual([
+      expect.objectContaining({ id: r.id, status: 'OPEN', itemCount: 3, activeItemCount: 2, claimedCount: 1 }),
+    ]);
     expect(l.serverTime).toBeTruthy();
   });
 

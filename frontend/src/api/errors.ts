@@ -65,6 +65,8 @@ const messages: Record<string, Text> = {
   NOT_YOUR_CLAIM: { en: "That item is claimed by someone else.", th: "ไอเท็มนี้เป็นของคนอื่น" },
   NOT_ELIGIBLE_FOR_CATEGORY: { en: "You were not in that queue when the round opened.", th: "คุณไม่ได้อยู่ในคิวนี้ตอนเปิดรอบ" },
   INVALID_PREFERENCE_LIST: { en: "Your list contains an invalid item.", th: "รายการของคุณมีไอเท็มที่ไม่ถูกต้อง" },
+  QUEUE_CHANGED: { en: "The queue changed while you were editing it (someone joined or left). Reload it and redo your changes.", th: "คิวเปลี่ยนระหว่างที่แก้อยู่ (มีคนเข้าหรือออกคิว) กรุณาโหลดใหม่แล้วแก้อีกครั้ง" },
+  QUEUE_ROUND_OPEN: { en: "A queue round of this category is open. Edit the queue after it closes.", th: "มีรอบคิวของหมวดนี้เปิดอยู่ แก้ลำดับคิวได้หลังปิดรอบ" },
   INVALID_QUEUE_CATEGORY: { en: "Queues exist for Gear, Card and Relic only.", th: "มีคิวเฉพาะ Gear, Card และ Relic" },
   NOTIFICATION_NOT_RETRYABLE: { en: "That notification cannot be retried.", th: "ส่งการแจ้งเตือนนี้ซ้ำไม่ได้" },
   RATE_LIMITED: { en: "Too many requests. Please slow down.", th: "คำขอมากเกินไป กรุณารอสักครู่" },

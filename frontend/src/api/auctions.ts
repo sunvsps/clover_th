@@ -51,6 +51,10 @@ export type RoundSummary = {
 };
 export type RoundListEntry = RoundSummary & {
   itemCount: number;
+  /** items not disabled (what can be claimed or allocated) */
+  activeItemCount: number;
+  /** items with a winner */
+  claimedCount: number;
   /** a leftover round: the round it was made from */
   sourceRoundId: number | null;
   /** a leftover round was already made from this round */
@@ -92,7 +96,7 @@ const roundFromWire = (r: WireRound): Round => ({
 
 export async function listRounds(signal?: AbortSignal): Promise<RoundListEntry[]> {
   const body = await get<WireRoundList>("/api/v1/auctions/rounds", { signal });
-  return body.rounds.map((r) => ({ ...summaryFromWire(r), itemCount: r.itemCount, sourceRoundId: r.sourceRoundId, leftoverRoundId: r.leftoverRoundId }));
+  return body.rounds.map((r) => ({ ...summaryFromWire(r), itemCount: r.itemCount, activeItemCount: r.activeItemCount, claimedCount: r.claimedCount, sourceRoundId: r.sourceRoundId, leftoverRoundId: r.leftoverRoundId }));
 }
 
 /** One poll of a round: `null` = 304, nothing changed since `etag`. */
@@ -120,6 +124,15 @@ export async function getQueues(): Promise<Queue[]> {
 }
 export const joinQueue = (category: Category) => put<{ category: string; length: number; myRank: number | null }>(`/api/v1/auctions/queues/${categoryToWire(category)}/me`);
 export const leaveQueue = (category: Category) => del<{ category: string; length: number; myRank: number | null }>(`/api/v1/auctions/queues/${categoryToWire(category)}/me`);
+/**
+ * Admin: rewrite one queue in this order (adds, removes and moves in one save). `expected` is the order that was
+ * loaded; the server refuses (QUEUE_CHANGED) if a member joined or left since, and while a queue round of this
+ * category is open (QUEUE_ROUND_OPEN).
+ */
+export async function replaceQueue(category: Category, memberIds: string[], expected: string[]): Promise<string[]> {
+  const res = await put<{ entries: { rank: number; memberId: string }[] }>(`/api/v1/admin/auctions/queues/${categoryToWire(category)}`, { memberIds, expected });
+  return res.entries.map((e) => e.memberId);
+}
 /** Admin: take a member out of one queue (same effect as that member leaving). */
 export const removeFromQueue = (category: Category, memberId: string) =>
   del<{ category: string; length: number; myRank: number | null }>(`/api/v1/admin/auctions/queues/${categoryToWire(category)}/${encodeURIComponent(memberId)}`);

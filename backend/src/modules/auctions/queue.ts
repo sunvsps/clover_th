@@ -112,6 +112,72 @@ export async function removeFromQueue(
   return queueSummary(tx, category, memberId);
 }
 
+/**
+ * Admin rewrites one queue in the given order (FR admin queue edit): adds, removes and reorders in one save.
+ * `expected` is the order the admin loaded; if the queue changed since (a member joined or left), nothing is written
+ * (QUEUE_CHANGED) so their change is not overwritten. The order key is QueueEntry.id, so every entry is rewritten
+ * with a new id in the new order (joinedAt is kept). That would drop everyone's eligibility for an OPEN queue round of
+ * this category (eligibility = id <= the round's cutoff), so it is refused while one is open (QUEUE_ROUND_OPEN).
+ */
+export async function replaceQueue(
+  tx: Tx,
+  category: QueueCategory,
+  memberIds: string[],
+  expected: string[] | undefined,
+  adminId: string,
+  requestId?: string,
+): Promise<{ category: QueueCategory; length: number; entries: { rank: number; memberId: string }[] }> {
+  await categoryLocks(tx, [category]);
+  const [open] = await tx.$queryRaw<{ id: number }[]>`
+    SELECT r.id FROM "AuctionRound" r JOIN "RoundQueueCutoff" c ON c."roundId" = r.id
+    WHERE r.status = 'OPEN' AND r.type = 'QUEUE_RANKED' AND c.category = ${category}::"ItemCategory" LIMIT 1`;
+  if (open) {
+    throw new AppError('QUEUE_ROUND_OPEN', 409, 'The queue cannot be edited while a queue round of this category is open', {
+      roundId: open.id,
+    });
+  }
+  const current = await tx.$queryRaw<{ memberId: string; joinedAt: Date }[]>`
+    SELECT "memberId", "joinedAt" FROM "QueueEntry" WHERE category = ${category}::"ItemCategory" ORDER BY id`;
+  const before = current.map((c) => c.memberId);
+  if (expected && (expected.length !== before.length || expected.some((id, i) => id !== before[i]))) {
+    throw new AppError('QUEUE_CHANGED', 409, 'The queue changed since it was loaded; reload and try again');
+  }
+  if (new Set(memberIds).size !== memberIds.length) {
+    throw new AppError('VALIDATION_ERROR', 422, 'A member can be in a queue once');
+  }
+  if (memberIds.length > 0) {
+    const active = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id::text FROM "Member" WHERE id = ANY(${memberIds}::uuid[]) AND "isActive"`;
+    const ok = new Set(active.map((m) => m.id));
+    const bad = memberIds.filter((id) => !ok.has(id));
+    if (bad.length > 0) throw new AppError('MEMBER_INACTIVE', 422, 'Unknown or deactivated member', { memberIds: bad });
+  }
+  const unchanged = memberIds.length === before.length && memberIds.every((id, i) => id === before[i]);
+  if (!unchanged) {
+    const joined = new Map(current.map((c) => [c.memberId, c.joinedAt]));
+    await tx.$executeRaw`DELETE FROM "QueueEntry" WHERE category = ${category}::"ItemCategory"`;
+    for (const id of memberIds) {
+      const at = joined.get(id);
+      if (at) {
+        await tx.$executeRaw`INSERT INTO "QueueEntry" (category, "memberId", "joinedAt")
+          VALUES (${category}::"ItemCategory", ${id}::uuid, ${at})`;
+      } else {
+        await tx.$executeRaw`INSERT INTO "QueueEntry" (category, "memberId") VALUES (${category}::"ItemCategory", ${id}::uuid)`;
+      }
+    }
+    await record(tx, {
+      actorType: 'MEMBER',
+      actorId: adminId,
+      action: 'queue.edit',
+      entityType: 'queue',
+      entityId: category,
+      meta: { before, after: memberIds },
+      requestId,
+    });
+  }
+  return { category, length: memberIds.length, entries: memberIds.map((memberId, i) => ({ rank: i + 1, memberId })) };
+}
+
 export type QueueWin = {
   roundId: number;
   roundName: string;

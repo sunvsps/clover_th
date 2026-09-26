@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Activity, Bell, Gavel, LayoutGrid, MessageSquareWarning, Palette, ScrollText, Settings, UserCog } from "lucide-react";
+import { Activity, Bell, Gavel, LayoutGrid, ListOrdered, MessageSquareWarning, Palette, ScrollText, Settings, UserCog } from "lucide-react";
 import type { WireActivity } from "../api";
 import ActivitiesAdmin from "../components/admin/ActivitiesAdmin";
 import AuctionAdmin from "../components/admin/AuctionAdmin";
@@ -9,6 +9,7 @@ import JobsAdmin from "../components/admin/JobsAdmin";
 import LayoutAdmin from "../components/admin/LayoutAdmin";
 import MembersAdmin from "../components/admin/MembersAdmin";
 import NotificationsAdmin from "../components/admin/NotificationsAdmin";
+import QueuesAdmin from "../components/admin/QueuesAdmin";
 import type { GuildMember, Job } from "../data/guild";
 import type { JobDraftEntry } from "../hooks/useJobManager";
 
@@ -23,7 +24,7 @@ type Props = {
   notify: (message: string) => void;
 };
 
-type Tab = "auctions" | "members" | "jobs" | "activities" | "layout" | "complaints" | "notifications" | "audit";
+type Tab = "auctions" | "queues" | "members" | "jobs" | "activities" | "layout" | "complaints" | "notifications" | "audit";
 
 /**
  * The admin page (only rendered for admins; the server still enforces every call). It has no control to grant admin
@@ -34,6 +35,7 @@ export default function AdminView({ isThai, jobs, members, activities, onSaveJob
   const [tab, setTab] = useState<Tab>("auctions");
   const tabs: { id: Tab; label: string; icon: ReactNode }[] = [
     { id: "auctions", label: t("Auctions", "ประมูล"), icon: <Gavel size={14} /> },
+    { id: "queues", label: t("Queues", "คิวประมูล"), icon: <ListOrdered size={14} /> },
     { id: "members", label: t("Members", "สมาชิก"), icon: <UserCog size={14} /> },
     { id: "jobs", label: t("Jobs", "อาชีพ"), icon: <Palette size={14} /> },
     { id: "activities", label: t("Activities", "กิจกรรม"), icon: <Activity size={14} /> },
@@ -64,6 +66,7 @@ export default function AdminView({ isThai, jobs, members, activities, onSaveJob
         ))}
       </div>
       {tab === "auctions" && <AuctionAdmin isThai={isThai} members={members} notify={notify} />}
+      {tab === "queues" && <QueuesAdmin isThai={isThai} members={members} jobs={jobs} notify={notify} />}
       {tab === "members" && <MembersAdmin isThai={isThai} jobs={jobs} onChanged={onMembersChanged} notify={notify} />}
       {tab === "jobs" && <JobsAdmin key={jobs.map((j) => `${j.id}:${j.label}:${j.color}`).join("|")} isThai={isThai} jobs={jobs} members={members} onSaveJobs={onSaveJobs} />}
       {tab === "activities" && <ActivitiesAdmin isThai={isThai} activities={activities} onChanged={onActivityChanged} notify={notify} />}

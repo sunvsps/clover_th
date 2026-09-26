@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, Pencil, Play, Plus, Square } from "lucide-react";
+import { Copy, CornerDownRight, ListOrdered, Pencil, Play, Plus, Square, X, Zap } from "lucide-react";
 import {
   ApiError,
   cancelRound,
@@ -15,15 +15,18 @@ import {
   type RoundListEntry,
 } from "../../api";
 import type { GuildMember } from "../../data/guild";
+import { useServerNow } from "../../hooks/useServerNow";
+import { formatClock, secondsUntil } from "../../views/auction/auctionModel";
 import NumberInput from "./NumberInput";
+import PrefsDialog, { type PrefsData } from "./PrefsDialog";
 import RoundForm from "./RoundForm";
+import RowMenu, { type RowMenuItem } from "./RowMenu";
 import { emptyRound, type RoundFormValue } from "./roundFormModel";
 import { adminErrorText } from "./adminShared";
 
 type Props = { isThai: boolean; members: GuildMember[]; notify: (message: string) => void };
 
 type Editing = { mode: "new" } | { mode: "edit"; id: number; initial: RoundFormValue };
-type Prefs = { roundId: number; lines: { ign: string; items: string[] }[] };
 
 /** Round management: create, edit drafts, start, close early, cancel, review the leftover draft, see preference lists. */
 export default function AuctionAdmin({ isThai, members, notify }: Props) {
@@ -34,9 +37,20 @@ export default function AuctionAdmin({ isThai, members, notify }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState<{ id: number; delay: number; duration: number } | null>(null);
-  const [prefs, setPrefs] = useState<Prefs | null>(null);
+  const [prefs, setPrefs] = useState<PrefsData | null>(null);
   const ignOf = (id: string) => members.find((m) => m.id === id)?.ign ?? (isThai ? "อดีตสมาชิก" : "Former member");
   const rounds = list.data ?? [];
+  const hasOpen = rounds.some((r) => r.status === "open");
+  const now = useServerNow(1000, hasOpen);
+
+  /** Newest first; a leftover round sits right under the round it was made from. */
+  const ids = new Set(rounds.map((r) => r.id));
+  const rows = rounds
+    .filter((r) => r.sourceRoundId === null || !ids.has(r.sourceRoundId))
+    .flatMap((r) => {
+      const child = rounds.find((c) => c.id === r.leftoverRoundId);
+      return child ? [{ round: r, nested: false }, { round: child, nested: true }] : [{ round: r, nested: false }];
+    });
 
   const typeLabel = (r: Pick<RoundListEntry, "type">) => (r.type === "liveClaim" ? t("live claim", "จองสด") : t("ranked queue", "จัดอันดับคิว"));
   const statusLabel = (s: RoundListEntry["status"]) => ({ draft: t("Draft", "ฉบับร่าง"), open: t("Open", "เปิดอยู่"), closed: t("Closed", "ปิดแล้ว"), cancelled: t("Cancelled", "ยกเลิก") })[s];
@@ -124,12 +138,98 @@ export default function AuctionAdmin({ isThai, members, notify }: Props) {
     setError(null);
     try {
       const [lists, detail] = await Promise.all([getRoundPreferences(round.id), getRound(round.id, null)]);
-      // named by slot ("Page 2 / Item 1"), the same numbering as the round form and the auction board
-      const names = new Map((detail?.round.items ?? []).map((i, idx) => [i.id, `Page ${Math.floor(idx / 4) + 1} / Item ${(idx % 4) + 1}`]));
-      setPrefs({ roundId: round.id, lines: lists.map((l) => ({ ign: ignOf(l.memberId), items: l.itemIds.map((id) => names.get(id) ?? `#${id}`) })) });
+      setPrefs({
+        roundId: round.id,
+        roundName: round.name,
+        closed: round.status === "closed",
+        // named by slot ("P2·1" = page 2, item 1), the same numbering as the round form and the auction board
+        items: (detail?.round.items ?? []).map((i, idx) => ({ id: i.id, label: t(`P${Math.floor(idx / 4) + 1}·${(idx % 4) + 1}`, `หน้า${Math.floor(idx / 4) + 1}·${(idx % 4) + 1}`), category: i.category, winnerId: i.winner?.memberId ?? null, queuePos: i.winner?.queuePos ?? null })),
+        lists,
+      });
     } catch (err) {
       setError(adminErrorText(err, isThai));
     }
+  }
+
+  /** Status pill; an open round adds its countdown (or "starts in" during the start delay). */
+  function status(r: RoundListEntry) {
+    let clock = "";
+    if (r.status === "open") {
+      if (r.opensAt && now < Date.parse(r.opensAt)) clock = t(`starts in ${formatClock(secondsUntil(r.opensAt, now))}`, `เริ่มใน ${formatClock(secondsUntil(r.opensAt, now))}`);
+      else clock = secondsUntil(r.closesAt, now) > 0 ? formatClock(secondsUntil(r.closesAt, now)) : t("closing…", "กำลังปิด…");
+    }
+    return (
+      <span className={`round-state ${r.status}`}>
+        <span className="round-state-dot" aria-hidden="true" />
+        {statusLabel(r.status)}
+        {clock && <span className="round-clock">{clock}</span>}
+      </span>
+    );
+  }
+
+  /** Claimed out of the claimable (not disabled) items, as a bar and a count. */
+  function claimed(r: RoundListEntry) {
+    const pct = r.activeItemCount > 0 ? Math.round((r.claimedCount / r.activeItemCount) * 100) : 0;
+    return (
+      <span className="round-claimed" title={t(`${r.claimedCount} of ${r.activeItemCount} items taken (${r.itemCount - r.activeItemCount} disabled)`, `ถูกจอง ${r.claimedCount} จาก ${r.activeItemCount} ชิ้น (ปิดใช้งาน ${r.itemCount - r.activeItemCount})`)}>
+        <span className="round-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} /></span>
+        <span className="mono">{r.claimedCount}/{r.activeItemCount}</span>
+      </span>
+    );
+  }
+
+  function menuItems(r: RoundListEntry): RowMenuItem[] {
+    const cancel: RowMenuItem = { label: t("Cancel round", "ยกเลิกรอบ"), icon: <X size={13} />, danger: true, disabled: busy, onSelect: () => void run(() => cancelRound(r.id), t("Round cancelled.", "ยกเลิกรอบแล้ว")) };
+    const prefsItem: RowMenuItem = { label: t("Preference lists", "รายการจัดอันดับ"), icon: <ListOrdered size={13} />, onSelect: () => void showPrefs(r) };
+    if (r.status === "draft")
+      return [
+        { label: t("Start…", "เริ่ม…"), icon: <Play size={13} />, disabled: busy, onSelect: () => setStarting({ id: r.id, delay: r.startDelaySec, duration: r.durationSec }) },
+        { label: t("Edit", "แก้ไข"), icon: <Pencil size={13} />, disabled: busy, onSelect: () => void edit(r) },
+        cancel,
+      ];
+    if (r.status === "open")
+      return [
+        { label: t("Close now", "ปิดรอบตอนนี้"), icon: <Square size={13} />, disabled: busy, onSelect: () => void run(() => closeRound(r.id), t("Round closed.", "ปิดรอบแล้ว")) },
+        ...(r.type === "queueRanked" ? [prefsItem] : []),
+        cancel,
+      ];
+    return [
+      ...(r.type === "liveClaim" && r.status === "closed" && r.sourceRoundId === null && r.leftoverRoundId === null
+        ? [{ label: t("Leftover draft", "รอบไอเท็มที่เหลือ"), icon: <Copy size={13} />, disabled: busy, onSelect: () => void openLeftover(r) }]
+        : []),
+      ...(r.type === "queueRanked" ? [prefsItem] : []),
+    ];
+  }
+
+  function renderRow(r: RoundListEntry, nested: boolean) {
+    return (
+      <tr key={r.id} data-round={r.id} className={`${nested ? "round-nested" : ""} ${r.status === "open" ? "round-open" : ""}`}>
+        <td>
+          {nested && <CornerDownRight size={13} className="round-nested-icon" aria-hidden="true" />}
+          <strong>#{r.id} {r.name}</strong>
+          {r.sourceRoundId !== null && !nested && <em className="tag status-closed">{t(`from #${r.sourceRoundId}`, `จาก #${r.sourceRoundId}`)}</em>}
+        </td>
+        <td>
+          <span className="round-type">
+            {r.type === "liveClaim" ? <Zap size={13} /> : <ListOrdered size={13} />} {r.type === "liveClaim" ? t("Live claim", "จองสด") : t("Ranked queue", "จัดอันดับคิว")}
+          </span>
+        </td>
+        <td>{status(r)}</td>
+        <td>{claimed(r)}</td>
+        <td className="row-actions">
+          {starting?.id === r.id ? (
+            <div className="start-panel">
+              <label><span>{t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")}</span><NumberInput className="small-input tiny" value={starting.delay} min={0} max={60} fallback={r.startDelaySec} onChange={(delay) => setStarting((cur) => cur && { ...cur, delay })} aria-label={t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")} /></label>
+              <label><span>{t("Duration (s)", "ระยะเวลา (วินาที)")}</span><NumberInput className="small-input" value={starting.duration} min={5} max={86400} fallback={r.durationSec} onChange={(duration) => setStarting((cur) => cur && { ...cur, duration })} aria-label={t("Duration (s)", "ระยะเวลา (วินาที)")} /></label>
+              <button type="button" className="admin-button" disabled={busy} onClick={() => void run(async () => { await startRound(r.id, { startDelaySec: starting.delay, durationSec: starting.duration }); setStarting(null); }, t("Round started.", "เริ่มรอบแล้ว"), (err) => startErrorText(err, r))}><Play size={12} /> {t("Start round", "เริ่มรอบ")}</button>
+              <button type="button" className="copy-button" onClick={() => setStarting(null)}>{t("Cancel", "ยกเลิก")}</button>
+            </div>
+          ) : (
+            <RowMenu label={t(`Actions for round #${r.id}`, `คำสั่งของรอบ #${r.id}`)} items={menuItems(r)} />
+          )}
+        </td>
+      </tr>
+    );
   }
 
   return (
@@ -157,62 +257,18 @@ export default function AuctionAdmin({ isThai, members, notify }: Props) {
       )}
 
       <div className="admin-table-wrap">
-        <table className="admin-table">
+        <table className="admin-table round-table">
           <thead>
             <tr>
               <th>{t("Round", "รอบ")}</th>
               <th>{t("Type", "ประเภท")}</th>
               <th>{t("Status", "สถานะ")}</th>
-              <th>{t("Items", "ไอเท็ม")}</th>
+              <th>{t("Taken", "ถูกจอง")}</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {rounds.map((r) => (
-              <tr key={r.id} data-round={r.id}>
-                <td>
-                  <strong>#{r.id} {r.name}</strong>
-                  {r.sourceRoundId !== null && <em className="tag status-closed">{t(`from #${r.sourceRoundId}`, `จาก #${r.sourceRoundId}`)}</em>}
-                </td>
-                <td>{typeLabel(r)}</td>
-                <td><em className={`tag status-${r.status}`}>{statusLabel(r.status)}</em></td>
-                <td className="mono">{r.itemCount}</td>
-                <td className="row-actions">
-                  {starting?.id === r.id ? (
-                    <div className="start-panel">
-                      <label><span>{t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")}</span><NumberInput className="small-input tiny" value={starting.delay} min={0} max={60} fallback={r.startDelaySec} onChange={(delay) => setStarting((cur) => cur && { ...cur, delay })} aria-label={t("Start delay (s)", "หน่วงก่อนเริ่ม (วินาที)")} /></label>
-                      <label><span>{t("Duration (s)", "ระยะเวลา (วินาที)")}</span><NumberInput className="small-input" value={starting.duration} min={5} max={86400} fallback={r.durationSec} onChange={(duration) => setStarting((cur) => cur && { ...cur, duration })} aria-label={t("Duration (s)", "ระยะเวลา (วินาที)")} /></label>
-                      <button type="button" className="admin-button" disabled={busy} onClick={() => void run(async () => { await startRound(r.id, { startDelaySec: starting.delay, durationSec: starting.duration }); setStarting(null); }, t("Round started.", "เริ่มรอบแล้ว"), (err) => startErrorText(err, r))}><Play size={12} /> {t("Start round", "เริ่มรอบ")}</button>
-                      <button type="button" className="copy-button" onClick={() => setStarting(null)}>{t("Cancel", "ยกเลิก")}</button>
-                    </div>
-                  ) : (
-                    <>
-                      {r.status === "draft" && (
-                        <>
-                          <button type="button" className="copy-button" disabled={busy} onClick={() => void edit(r)}><Pencil size={11} /> {t("Edit", "แก้ไข")}</button>
-                          <button type="button" className="admin-button" disabled={busy} onClick={() => setStarting({ id: r.id, delay: r.startDelaySec, duration: r.durationSec })}><Play size={12} /> {t("Start…", "เริ่ม…")}</button>
-                          <button type="button" className="copy-button danger" disabled={busy} onClick={() => void run(() => cancelRound(r.id), t("Round cancelled.", "ยกเลิกรอบแล้ว"))}>{t("Cancel round", "ยกเลิกรอบ")}</button>
-                        </>
-                      )}
-                      {r.status === "open" && (
-                        <>
-                          <button type="button" className="admin-button" disabled={busy} onClick={() => void run(() => closeRound(r.id), t("Round closed.", "ปิดรอบแล้ว"))}><Square size={11} /> {t("Close now", "ปิดรอบตอนนี้")}</button>
-                          <button type="button" className="copy-button danger" disabled={busy} onClick={() => void run(() => cancelRound(r.id), t("Round cancelled.", "ยกเลิกรอบแล้ว"))}>{t("Cancel round", "ยกเลิกรอบ")}</button>
-                        </>
-                      )}
-                      {r.type === "liveClaim" && r.status === "closed" && r.sourceRoundId === null && r.leftoverRoundId === null && (
-                        <button type="button" className="copy-button" disabled={busy} title={t("New live-claim draft with the same items; the ones claimed here are disabled", "สร้างฉบับร่างรอบจองสดจากไอเท็มเดิม ของที่ถูกจองไปแล้วจะถูกปิดใช้งาน")} onClick={() => void openLeftover(r)}>
-                          <Copy size={11} /> {t("Leftover draft", "รอบไอเท็มที่เหลือ")}
-                        </button>
-                      )}
-                      {r.type === "queueRanked" && r.status !== "draft" && (
-                        <button type="button" className="copy-button" onClick={() => void showPrefs(r)}>{t("Preference lists", "รายการจัดอันดับ")}</button>
-                      )}
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {rows.map(({ round, nested }) => renderRow(round, nested))}
             {rounds.length === 0 && list.data && (
               <tr>
                 <td colSpan={5} className="empty-search">{t("No rounds yet.", "ยังไม่มีรอบ")}</td>
@@ -222,14 +278,7 @@ export default function AuctionAdmin({ isThai, members, notify }: Props) {
         </table>
       </div>
 
-      {prefs && (
-        <section className="prefs-view" data-testid="prefs-view">
-          <h4>{t(`Preference lists of round #${prefs.roundId}`, `รายการจัดอันดับของรอบ #${prefs.roundId}`)} <button type="button" className="copy-button" onClick={() => setPrefs(null)}>{t("Hide", "ซ่อน")}</button></h4>
-          {prefs.lines.length === 0 ? <p className="empty-search">{t("Nobody has submitted a list.", "ยังไม่มีใครส่งรายการ")}</p> : (
-            <ul>{prefs.lines.map((l) => <li key={l.ign}><strong>{l.ign}</strong>: {l.items.map((n, i) => `${i + 1}. ${n}`).join("  ")}</li>)}</ul>
-          )}
-        </section>
-      )}
+      {prefs && <PrefsDialog data={prefs} isThai={isThai} ignOf={ignOf} onClose={() => setPrefs(null)} />}
     </div>
   );
 }

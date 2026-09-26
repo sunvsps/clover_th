@@ -1,4 +1,8 @@
+import { Gem, IdCard, Sword } from "lucide-react";
 import type { Category } from "../api";
+
+/** Icon of each colored category (Gear sword, Card id card, Relic gem), so a category never relies on color alone. */
+export const CATEGORY_ICONS: Partial<Record<Category, typeof Sword>> = { gear: Sword, card: IdCard, relic: Gem };
 
 /** Gear, Card and Relic have their own color (red, purple, orange; see `.cat-*` in features.css). */
 export const TINTED_CATEGORIES: Category[] = ["gear", "card", "relic"];
