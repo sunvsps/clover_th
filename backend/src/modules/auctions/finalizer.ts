@@ -27,25 +27,16 @@ export async function loadPreferences(db: Pick<Tx, '$queryRaw'>, roundId: number
  * Idempotent: a round with allocatedAt set is left alone (returns false).
  * Steps: snapshot the queue of each category (entries with id <= cutoff that still exist, so members who left
  * during the window are out), persist the snapshot as the frozen input, allocate (pure), write winners, re-queue
- * ALL winners at the tail per category in their previous queue order, copy leftovers into ONE DRAFT type-1 round
- * (sourceRoundId), stamp allocatedAt/algorithmVersion, audit.
+ * ALL winners at the tail per category in their previous queue order, stamp allocatedAt/algorithmVersion, audit.
+ * Items nobody was allocated simply stay without a winner: a queue round makes no leftover round.
  */
 export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string): Promise<boolean> {
-  const [state] = await tx.$queryRaw<{ allocatedAt: Date | null; createdById: string }[]>`
-    SELECT "allocatedAt", "createdById" FROM "AuctionRound" WHERE id = ${round.id}`;
+  const [state] = await tx.$queryRaw<{ allocatedAt: Date | null }[]>`
+    SELECT "allocatedAt" FROM "AuctionRound" WHERE id = ${round.id}`;
   if (state!.allocatedAt) return false;
 
-  const items = await tx.$queryRaw<
-    {
-      id: number;
-      name: string;
-      category: string;
-      rarity: string | null;
-      imageUrl: string | null;
-      sortOrder: number;
-    }[]
-  >`SELECT id, name, category, rarity, "imageUrl", "sortOrder" FROM "AuctionItem"
-    WHERE "roundId" = ${round.id} AND NOT disabled ORDER BY "sortOrder", id`; // a disabled item is neither allocated nor a leftover
+  const items = await tx.$queryRaw<{ id: number; category: string }[]>`SELECT id, category FROM "AuctionItem"
+    WHERE "roundId" = ${round.id} AND NOT disabled ORDER BY "sortOrder", id`; // a disabled item is never allocated
   const categories = [...new Set(items.map((i) => i.category))];
   await categoryLocks(tx, categories);
 
@@ -86,22 +77,9 @@ export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string)
     requeued[category] = winners.map((w) => w.memberId);
   }
 
-  // Leftovers: every item that ended unallocated becomes an item of ONE draft type-1 round (never auto-opened).
+  // Items that ended unallocated stay in this round without a winner (no leftover round is made).
   const won = new Set(awards.map((a) => a.itemId));
-  const leftovers = items.filter((i) => !won.has(i.id));
-  let leftoverRoundId: number | null = null;
-  if (leftovers.length > 0) {
-    const [created] = await tx.$queryRaw<{ id: number }[]>`
-      INSERT INTO "AuctionRound" (type, name, status, "durationSec", "winCap", "startDelaySec", "sourceRoundId", "createdById")
-      VALUES ('LIVE_CLAIM', ${`${round.name} (leftovers)`}, 'DRAFT', 300, 5, 3, ${round.id}, ${state!.createdById}::uuid)
-      RETURNING id`;
-    leftoverRoundId = created!.id;
-    for (const [i, it] of leftovers.entries()) {
-      await tx.$executeRaw`
-        INSERT INTO "AuctionItem" ("roundId", name, category, rarity, "imageUrl", "sortOrder")
-        VALUES (${leftoverRoundId}, ${it.name}, ${it.category}::"ItemCategory", ${it.rarity}, ${it.imageUrl}, ${i})`;
-    }
-  }
+  const unallocated = items.filter((i) => !won.has(i.id));
 
   await tx.$executeRaw`
     UPDATE "AuctionRound" SET "allocatedAt" = clock_timestamp(), "algorithmVersion" = ${ALGORITHM_VERSION}::int
@@ -124,8 +102,7 @@ export async function allocateRound(tx: Tx, round: RoundRow, requestId?: string)
       category: a.category,
       position: a.position,
     })),
-    leftoverItems: leftovers.map((l) => l.id),
-    leftoverRoundId,
+    unallocatedItems: unallocated.map((l) => l.id),
   });
   await audit('auction.requeue', { requeued });
   return true;

@@ -268,7 +268,6 @@ describe('WP9 allocation through the API', () => {
     await A.close(admin.h, r.id);
     expect(await stored(r.id)).toEqual([ms[0]!.id, ms[1]!.id]);
     expect(await queueOrder(w, 'GEAR')).toEqual([ms[2]!.id, ms[3]!.id, ms[0]!.id, ms[1]!.id]);
-    expect((await A.results(ms[0]!.h, r.id)).json().leftoverRoundId).toBeNull(); // no leftovers: every item was won
 
     const short = await session(w);
     await Q.join(short.h, 'CARD');
@@ -281,7 +280,8 @@ describe('WP9 allocation through the API', () => {
     await A.close(admin.h, r2.id);
     expect((await stored(r2.id)).filter(Boolean)).toHaveLength(1); // one member: one item
     const res = (await A.results(short.h, r2.id)).json();
-    expect(await w.db.prisma.auctionItem.count({ where: { roundId: res.leftoverRoundId } })).toBe(4);
+    expect(res.items.filter((i: { winner: unknown }) => i.winner === null)).toHaveLength(4); // left without a winner
+    expect(res.leftoverRoundId).toBeNull();
   });
 
   it('a member who submitted nothing, or whose items were all taken, keeps their position; latecomers stay ahead of new winners', async () => {
@@ -321,7 +321,7 @@ describe('WP9 allocation through the API', () => {
     expect(await queueOrder(w, 'GEAR')).toEqual([c!.id, a!.id, b!.id]);
   });
 
-  it('leftovers include items nobody listed AND items whose listers all lost out, in ONE draft type-1 round (never opened)', async () => {
+  it('items nobody listed AND items whose listers all lost out stay unallocated; no leftover round is made', async () => {
     const admin = await session(w, { admin: true });
     const ms = await sessions(w, 2);
     await joinInOrder(w, ms, 'GEAR');
@@ -330,18 +330,14 @@ describe('WP9 allocation through the API', () => {
     await Q.setPrefs(ms[1]!.h, r.id, [r.itemIds[0]!]); // loses item 1; nothing else listed
     await A.close(admin.h, r.id);
     const res = (await A.results(ms[0]!.h, r.id)).json();
-    const left = await w.db.prisma.auctionRound.findUniqueOrThrow({
-      where: { id: res.leftoverRoundId },
-      include: { items: true },
-    });
-    expect(left.items.map((i) => i.name).sort()).toEqual(['Gear 2', 'Gear 3', 'Gear 4']);
-    expect(left).toMatchObject({ status: 'DRAFT', type: 'LIVE_CLAIM', sourceRoundId: r.id });
-    // admin reviews and starts it through the normal endpoints; any category is accepted
-    expect((await A.start(admin.h, left.id, { startDelaySec: 0 })).statusCode).toBe(200);
-    expect((await A.claim(ms[0]!.h, left.id, left.items[0]!.id)).statusCode).toBe(200);
+    expect(res.items.filter((i: { winner: unknown }) => i.winner === null).map((i: { name: string }) => i.name)).toEqual(['Gear 2', 'Gear 3', 'Gear 4']);
+    expect(res.leftoverRoundId).toBeNull();
+    expect(await w.db.prisma.auctionRound.count({ where: { sourceRoundId: r.id } })).toBe(0);
+    // and the leftover-draft button's endpoint refuses a queue round
+    expect((await A.leftover(admin.h, r.id)).json().error.code).toBe('LEFTOVER_LIVE_CLAIM_ONLY');
   });
 
-  it('finalize twice is idempotent: identical results, queue, snapshot, one leftover round, one allocation audit row', async () => {
+  it('finalize twice is idempotent: identical results, queue, snapshot, no leftover round, one allocation audit row', async () => {
     const admin = await session(w, { admin: true });
     const ms = await sessions(w, 3);
     await joinInOrder(w, ms, 'GEAR');
@@ -364,7 +360,7 @@ describe('WP9 allocation through the API', () => {
     expect(await createSweeper({ prisma: w.db.prisma, tx: w.app.tx }).tick()).toBe(0);
     await A.get(ms[0]!.h, r.id);
     expect(await snapshotOf()).toEqual(first);
-    expect(first).toMatchObject({ snapshot: 3, leftovers: 1, audits: 1 });
+    expect(first).toMatchObject({ snapshot: 3, leftovers: 0, audits: 1 });
   });
 
   it('the allocation step itself is idempotent (allocatedAt guard): running it again on an allocated round changes nothing', async () => {
@@ -380,7 +376,7 @@ describe('WP9 allocation through the API', () => {
     expect(again).toBe(false);
     expect({ items: await stored(r.id), queue: await queueOrder(w, 'GEAR') }).toEqual(before);
     expect(await w.db.prisma.roundQueueSnapshot.count({ where: { roundId: r.id } })).toBe(3);
-    expect(await w.db.prisma.auctionRound.count({ where: { sourceRoundId: r.id } })).toBe(1);
+    expect(await w.db.prisma.auctionRound.count({ where: { sourceRoundId: r.id } })).toBe(0);
   });
 
   it('admin close early triggers allocation; expiry (lazy read and sweeper) triggers it too', async () => {
@@ -412,7 +408,7 @@ describe('WP9 allocation through the API', () => {
     expect(await queueOrder(w, 'GEAR')).toEqual([a!.id]);
   });
 
-  it('results: hidden before close, published to everyone after with queuePos and leftoverRoundId; rank stays visible', async () => {
+  it('results: hidden before close, published to everyone after with queuePos (no leftover round); rank stays visible', async () => {
     const admin = await session(w, { admin: true });
     const [a, b, outsider] = await sessions(w, 3);
     await joinInOrder(w, [a!, b!], 'GEAR');
@@ -425,7 +421,7 @@ describe('WP9 allocation through the API', () => {
     expect(res.status).toBe('CLOSED');
     expect(res.items[1].winner).toMatchObject({ memberId: b!.id, queuePos: 2 });
     expect(res.items[0].winner).toBeNull();
-    expect(res.leftoverRoundId).not.toBeNull();
+    expect(res.leftoverRoundId).toBeNull();
     expect((await A.mine(b!.h, r.id)).json()).toMatchObject({ myWinCount: 1 });
     expect((await Q.queues(a!.h)).json()[0].myRank).toBe(1); // A (no win) is now first; B is behind
     expect((await Q.queues(b!.h)).json()[0].myRank).toBe(2);
@@ -452,7 +448,7 @@ describe('WP9 allocation through the API', () => {
 });
 
 describe('disabled items in a queue round', () => {
-  it('need no category, cannot be ranked (ITEM_DISABLED), and are neither allocated nor copied as leftovers', async () => {
+  it('need no category, cannot be ranked (ITEM_DISABLED), and are never allocated', async () => {
     const admin = await session(w, { admin: true });
     const [a] = await sessions(w, 1);
     await Q.join(a!.h, 'GEAR');
@@ -464,7 +460,6 @@ describe('disabled items in a queue round', () => {
     await Q.setPrefs(a!.h, r.id, [r.itemIds[0]!]);
     await A.close(admin.h, r.id);
     expect(await stored(r.id)).toEqual([a!.id, null, null]);
-    const leftover = await w.db.prisma.auctionRound.findFirstOrThrow({ where: { sourceRoundId: r.id }, include: { items: true } });
-    expect(leftover.items.map((i) => i.name)).toEqual(['Gear 2']);
+    expect(await w.db.prisma.auctionRound.count({ where: { sourceRoundId: r.id } })).toBe(0);
   });
 });

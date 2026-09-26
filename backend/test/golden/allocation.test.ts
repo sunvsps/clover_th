@@ -103,7 +103,7 @@ describe('golden test end to end (FR-3.7 to FR-3.13)', () => {
   const A = api(w);
   const Q = queueApi(w);
 
-  it('queue A..E, lists A=(1,3), B=(1,3), C=(3,2): results A:1 B:3 C:2, queue after D,E,A,B,C, leftovers 4 and 5 become a DRAFT type-1 round', async () => {
+  it('queue A..E, lists A=(1,3), B=(1,3), C=(3,2): results A:1 B:3 C:2, queue after D,E,A,B,C, items 4 and 5 stay unallocated with no leftover round', async () => {
     const admin = await session(w, { admin: true });
     const [a, b, c, d, e] = await Promise.all(['A', 'B', 'C', 'D', 'E'].map((ign) => session(w, { ign })));
     const names = new Map([a!, b!, c!, d!, e!].map((m) => [m.id, m.ign]));
@@ -147,21 +147,9 @@ describe('golden test end to end (FR-3.7 to FR-3.13)', () => {
       (await Q.queues(c!.h)).json().find((q: { category: string }) => q.category === 'GEAR').myRank,
     ).toBe(5);
 
-    // leftovers: items 4 and 5 in ONE draft type-1 round with sourceRoundId, which does not open by itself
-    expect(res.leftoverRoundId).not.toBeNull();
-    const left = await w.db.prisma.auctionRound.findUniqueOrThrow({
-      where: { id: res.leftoverRoundId },
-      include: { items: { orderBy: { id: 'asc' } } },
-    });
-    expect(left).toMatchObject({
-      type: 'LIVE_CLAIM',
-      status: 'DRAFT',
-      sourceRoundId: r.id,
-      opensAt: null,
-      winCap: 5,
-    });
-    expect(left.items.map((i) => i.name)).toEqual(['Gear 4', 'Gear 5']);
-    expect(await w.db.prisma.auctionRound.count({ where: { sourceRoundId: r.id } })).toBe(1);
+    // items 4 and 5 stay in this round without a winner: a queue round makes no leftover round
+    expect(res.leftoverRoundId).toBeNull();
+    expect(await w.db.prisma.auctionRound.count({ where: { sourceRoundId: r.id } })).toBe(0);
 
     // stored inputs and a replay from them reproduce the stored results
     const snap = await w.db.prisma.roundQueueSnapshot.findMany({
@@ -182,6 +170,6 @@ describe('golden test end to end (FR-3.7 to FR-3.13)', () => {
     expect(round).toMatchObject({ status: 'CLOSED', algorithmVersion: 1 });
     expect(round.allocatedAt).not.toBeNull();
     const audit = await w.db.prisma.auditLog.findFirstOrThrow({ where: { action: 'auction.allocation' } });
-    expect(audit.meta).toMatchObject({ algorithmVersion: 1, leftoverRoundId: res.leftoverRoundId });
+    expect(audit.meta).toMatchObject({ algorithmVersion: 1, unallocatedItems: [i4, i5] });
   });
 });
