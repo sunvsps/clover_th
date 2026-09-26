@@ -1,12 +1,14 @@
 import type { GuildMember, Job, ScheduleEvent } from "../data/guild";
 import { toGuildMember, toJob, toScheduleEvent, type Me, type WireActivity, type WireEvent, type WireJob, type WireMember } from "./adapters";
-import { get, post } from "./client";
+import { get, post, put } from "./client";
 
 /** Where the Sign-in button goes. The backend sets the session cookie and redirects back to the app. */
 export const LOGIN_URL = "/api/v1/auth/discord/login";
 
 export const getMe = () => get<Me>("/api/v1/me");
 export const logout = () => post<void>("/api/v1/auth/logout");
+/** Remembers the UI language on the member (returned by `/me` as `language` from then on). */
+export const saveLanguage = (language: "en" | "th") => put<{ language: "en" | "th" }>("/api/v1/me/language", { language });
 
 export const getMembers = async (): Promise<GuildMember[]> => (await get<WireMember[]>("/api/v1/members")).map(toGuildMember);
 export const getJobs = async (): Promise<Job[]> => (await get<WireJob[]>("/api/v1/jobs")).map(toJob);

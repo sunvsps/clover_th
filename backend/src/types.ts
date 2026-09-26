@@ -11,6 +11,8 @@ export type AuthContext = {
   nickname: string | null;
   isAdmin: boolean;
   source: 'BOT' | 'MANUAL';
+  /** UI language picked last ('en' until the member switches it) */
+  language: 'en' | 'th';
   job: { id: number; label: string; color: string };
 };
 

@@ -19,6 +19,13 @@ export const routes: RouteSpec[] = [
   { method: 'GET', pattern: '/api/v1/me', url: '/api/v1/me', auth: 'member' },
   {
     method: 'PUT',
+    pattern: '/api/v1/me/language',
+    url: '/api/v1/me/language',
+    auth: 'member',
+    payload: { language: 'th' },
+  },
+  {
+    method: 'PUT',
     pattern: '/api/v1/bot/members/:discordId',
     url: '/api/v1/bot/members/70001',
     auth: 'bot',

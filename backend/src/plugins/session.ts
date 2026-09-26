@@ -23,6 +23,7 @@ type Row = {
   nickname: string | null;
   isAdmin: boolean;
   source: 'BOT' | 'MANUAL';
+  language: 'en' | 'th';
   jobId: number;
   label: string;
   color: string;
@@ -90,7 +91,7 @@ export default fp(
       SELECT s."expiresAt" > clock_timestamp()
                AND s."createdAt" + make_interval(days => ${absolute}::int) > clock_timestamp() AS valid,
              clock_timestamp() - s."lastSeen" > interval '1 hour' AS stale,
-             m."isActive", m.id AS "memberId", m."discordId", m.ign, m.nickname, m."isAdmin", m.source,
+             m."isActive", m.id AS "memberId", m."discordId", m.ign, m.nickname, m."isAdmin", m.source, m.language,
              j.id AS "jobId", j.label, j.color
       FROM "Session" s
       JOIN "Member" m ON m.id = s."memberId"
@@ -118,6 +119,7 @@ export default fp(
         nickname: r.nickname,
         isAdmin: r.isAdmin,
         source: r.source,
+        language: r.language,
         job: { id: r.jobId, label: r.label, color: r.color },
       };
       request.auth = auth;

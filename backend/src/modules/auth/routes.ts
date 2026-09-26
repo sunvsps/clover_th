@@ -19,6 +19,8 @@ const profile = z.object({
   job: z.object({ id: z.number(), label: z.string(), color: z.string() }),
   isAdmin: z.boolean(),
   isIncomplete: z.boolean(),
+  /** UI language picked last; 'en' until the member switches it */
+  language: z.enum(['en', 'th']),
   serverTime: z.string(),
 });
 
@@ -156,8 +158,27 @@ export default async function authRoutes(app: FastifyInstance) {
         job: a.job,
         isAdmin: a.isAdmin,
         isIncomplete: a.nickname === null || a.source === 'MANUAL',
+        language: a.language,
         serverTime: new Date().toISOString(),
       };
+    },
+  );
+
+  // Remembers the UI language the member picked last, so it follows them to another browser or device.
+  r.put(
+    '/api/v1/me/language',
+    {
+      schema: {
+        tags: ['auth'],
+        body: z.object({ language: z.enum(['en', 'th']) }).strict(),
+        response: { 200: z.object({ language: z.enum(['en', 'th']) }) },
+      },
+      onRequest: [requireAuth],
+    },
+    async (req) => {
+      const { language } = req.body;
+      await app.prisma.member.update({ where: { id: req.auth!.memberId }, data: { language } });
+      return { language };
     },
   );
 }

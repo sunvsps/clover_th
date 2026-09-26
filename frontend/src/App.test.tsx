@@ -1,9 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import App from "./App";
 import type { Me } from "./api";
 import { meAdmin, mockApi } from "./test/api";
+import { server } from "./test/server";
 
 async function renderApp(me: Me | null = meAdmin) {
   mockApi({ me });
@@ -61,5 +63,33 @@ describe("App shell", () => {
     await user.click(screen.getByTitle("Sign out"));
     expect(await screen.findByRole("heading", { name: "Clover guild tools" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Guild item auction" })).not.toBeInTheDocument();
+  });
+});
+
+describe("remembered language", () => {
+  it("starts in the language saved on the member", async () => {
+    await renderApp({ ...meAdmin, language: "th" });
+    expect(within(screen.getByRole("navigation", { name: "Guild tools" })).getByRole("button", { name: "ประมูลไอเท็ม" })).toBeInTheDocument();
+  });
+
+  it("switching saves the pick on the member (PUT /me/language) and in this browser", async () => {
+    const saved: unknown[] = [];
+    await renderApp();
+    server.use(http.put("*/api/v1/me/language", async ({ request }) => {
+      const body = await request.json();
+      saved.push(body);
+      return HttpResponse.json(body);
+    }));
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByRole("button", { name: "TH" }));
+    expect(screen.getByRole("button", { name: "ประมูลไอเท็ม" })).toBeInTheDocument();
+    await waitFor(() => expect(saved).toEqual([{ language: "th" }]));
+    expect(localStorage.getItem("clover.language")).toBe("th");
+  });
+
+  it("before sign-in, the browser's last pick is used", async () => {
+    localStorage.setItem("clover.language", "th");
+    await renderApp(null);
+    expect(await screen.findByRole("button", { name: "EN" })).toBeInTheDocument();
   });
 });

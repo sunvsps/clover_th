@@ -97,6 +97,8 @@ model Member {
   isActive      Boolean      @default(true)
   deactivatedAt DateTime?
   source        MemberSource @default(BOT)
+  /// UI language picked last: "en" or "th" (DB check); "en" until the member switches it
+  language      String       @default("en")
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

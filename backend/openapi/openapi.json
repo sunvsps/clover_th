@@ -170,6 +170,13 @@
                     "isIncomplete": {
                       "type": "boolean"
                     },
+                    "language": {
+                      "type": "string",
+                      "enum": [
+                        "en",
+                        "th"
+                      ]
+                    },
                     "serverTime": {
                       "type": "string"
                     }
@@ -182,7 +189,63 @@
                     "job",
                     "isAdmin",
                     "isIncomplete",
+                    "language",
                     "serverTime"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/language": {
+      "put": {
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "en",
+                      "th"
+                    ]
+                  }
+                },
+                "required": [
+                  "language"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "language": {
+                      "type": "string",
+                      "enum": [
+                        "en",
+                        "th"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "language"
                   ],
                   "additionalProperties": false
                 }

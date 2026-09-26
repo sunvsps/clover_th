@@ -31,6 +31,7 @@ export const meAdmin: Me = {
   job: { id: 1, label: "High Priest", color: "#3a7bd5" },
   isAdmin: true,
   isIncomplete: false,
+  language: "en",
   serverTime: "2026-09-21T10:00:00.000Z",
 };
 
@@ -54,6 +55,7 @@ export function mockApi({ me = meAdmin }: { me?: Me | null } = {}) {
     // the demo login is off on a normal backend: a plain 404
     http.get("*/api/v1/demo/members", () => HttpResponse.json({ error: { code: "NOT_FOUND", message: "x", details: {} } }, { status: 404 })),
     http.post("*/api/v1/auth/logout", () => new HttpResponse(null, { status: 204 })),
+    http.put("*/api/v1/me/language", async ({ request }) => HttpResponse.json(await request.json())),
   );
 }
 

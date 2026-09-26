@@ -9,6 +9,7 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   window.location.hash = "";
+  localStorage.clear(); // e.g. the remembered language must not leak into the next test
 });
 afterAll(() => server.close());
 

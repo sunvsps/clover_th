@@ -12,8 +12,8 @@ import Workspace from "./views/Workspace";
 /** Application shell: the auth gate (`/me`), then the guild data load, then the tools (`views/Workspace`). */
 function App() {
   const { notice, setNotice, clearNotice } = useNotice();
-  const { isThai, toggleLanguage } = useLanguage();
   const session = useSession();
+  const { isThai, toggleLanguage } = useLanguage(session.state.status === "ready" ? session.state.me : null);
   const guildData = useGuildData(session.isAuthenticated);
   const signedIn = session.state.status === "ready";
 
